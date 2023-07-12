@@ -47,7 +47,7 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
         print(f"\nHashing polycubes n={n}")
         for base_cube in pollycubes:
             for new_cube in expand_cube(base_cube):
-                cube_hash = get_canoincal_packing(new_cube)
+                cube_hash = get_canoincal_packing(new_cube, hashes)
                 hashes.add(cube_hash)
             log_if_needed(done, len(pollycubes))
             done += 1
@@ -68,7 +68,7 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
     return results
 
 
-def get_canoincal_packing(polycube: np.ndarray) -> int:
+def get_canoincal_packing(polycube: np.ndarray, known_hashes: set[int]) -> int:
     """
     Determines if a polycube has already been seen.
 
@@ -79,13 +79,14 @@ def get_canoincal_packing(polycube: np.ndarray) -> int:
     polycube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
 
     Returns:
-    boolean: True if polycube is already present in the set of all cubes so far.
     hash: the hash for this cube
 
     """
     max_hash = 0
     for cube_rotation in all_rotations(polycube):
         this_hash = pack(cube_rotation)
+        if(this_hash in known_hashes):
+            return this_hash
         if (this_hash > max_hash):
             max_hash = this_hash
     return max_hash

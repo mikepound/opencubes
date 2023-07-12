@@ -20,11 +20,18 @@ def all_rotations(polycube):
     generator(np.array): Yields new rotations of this cube about all axes
   
     """
+    used_rotations = set()
+
     def single_axis_rotation(polycube, axes):
         """Yield four rotations of the given 3d array in the plane spanned by the given axes.
         For example, a rotation in axes (0,1) is a rotation around axis 2"""
         for i in range(4):
-             yield np.rot90(polycube, i, axes)
+            rotation = np.rot90(polycube, i, axes)
+            rot_rle = rle(rotation)
+
+            if rot_rle not in used_rotations:
+                used_rotations.add(rot_rle)
+                yield rotation
 
     # 4 rotations about axis 0
     yield from single_axis_rotation(polycube, (1,2))

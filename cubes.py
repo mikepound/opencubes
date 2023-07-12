@@ -20,11 +20,18 @@ def all_rotations(polycube):
     generator(np.array): Yields new rotations of this cube about all axes
   
     """
+    used_rotations = set()
+
     def single_axis_rotation(polycube, axes):
         """Yield four rotations of the given 3d array in the plane spanned by the given axes.
         For example, a rotation in axes (0,1) is a rotation around axis 2"""
         for i in range(4):
-             yield np.rot90(polycube, i, axes)
+            rotation = np.rot90(polycube, i, axes)
+            rot_rle = rle(rotation)
+
+            if rot_rle not in used_rotations:
+                used_rotations.add(rot_rle)
+                yield rotation
 
     # 4 rotations about axis 0
     yield from single_axis_rotation(polycube, (1,2))
@@ -39,6 +46,45 @@ def all_rotations(polycube):
     # rotate about axis 2, 8 rotations about axis 1
     yield from single_axis_rotation(np.rot90(polycube, axes=(0,1)), (0,2))
     yield from single_axis_rotation(np.rot90(polycube, -1, axes=(0,1)), (0,2))
+
+def get_smallest_rotations(polycube):
+    """
+    Returns only the rotations that will possibly be stored on the set.
+
+    Used a signature creator that is a cube that has all numbers from 0 to N**3 
+    whith N being the biggest dimension on the polycube.
+    That guarantees that every rotation will use the same signature creator,
+    but does not guarantee that different polycubes can have the same signature 
+    (but might, I did not check)
+
+    By always storing the polycube with the smallest signature on the set,
+    this reduces the number of rotations that need to be checked for each polycube
+
+    Parameters:
+    polycube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
+
+    Returns:
+    generator(np.array): Yields new rotations of this cube about all axes
+    """
+
+    max_len = max(polycube.shape)
+    signature_creator = np.arange(max_len**3).reshape(max_len,max_len,max_len)
+
+    def get_rotation_signature(polycube):
+        """
+        Creates a signature for each polycube rotation so that it is not needed to check every rotation.
+        """
+        x, y, z = polycube.shape
+
+        padded_cube = np.pad(polycube, ((0, max_len-x), (0, max_len-y), (0, max_len-z)))
+        return np.sum(padded_cube * signature_creator)
+    
+    all_rot = [(rot, get_rotation_signature(rot)) for rot in all_rotations(polycube)]
+    min_sig = min(all_rot, key=lambda x: x[1])[1]
+    valid_rotations = filter(lambda x: x[1] <= min_sig, all_rot)
+
+    for v in valid_rotations:
+        yield v[0]
 
 def crop_cube(cube):
     """
@@ -135,7 +181,9 @@ def generate_polycubes(n, use_cache=False):
         for new_cube in expand_cube(base_cube):
             if not cube_exists_rle(new_cube, polycubes_rle):
                 polycubes.append(new_cube)
-                polycubes_rle.add(rle(new_cube))
+                for r in get_smallest_rotations(new_cube):
+                    polycubes_rle.add(rle(r))
+                    break
 
         if (idx % 100 == 0):               
             perc = round((idx / len(base_cubes)) * 100,2)
@@ -200,7 +248,7 @@ def cube_exists_rle(polycube, polycubes_rle):
     boolean: True if polycube is already present in the set of all cubes so far.
   
     """
-    for cube_rotation in all_rotations(polycube):
+    for cube_rotation in get_smallest_rotations(polycube):
         if rle(cube_rotation) in polycubes_rle:
             return True
 

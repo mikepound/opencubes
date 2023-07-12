@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Generator
 
 
 def crop_cube(cube: np.ndarray) -> np.ndarray:
@@ -22,7 +23,7 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
     return cube
 
 
-def expand_cube(cube: np.ndarray) -> np.ndarray:
+def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
     Expands a polycube by adding single blocks at all valid locations.
 

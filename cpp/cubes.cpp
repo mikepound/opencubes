@@ -326,23 +326,24 @@ unordered_set<Cube> gen(int n, int threads = 1)
     {
         vector<Cube> baseCubes;
         baseCubes.insert(baseCubes.end(), base.begin(), base.end());
+        base.clear();
+        base.reserve(1);
         printf("starting %d threads\n\r", threads);
         vector<thread> ts;
         vector<unordered_set<Cube>> multihash(threads);
         for (int i = 0; i < threads; ++i)
         {
-            auto start = base.size() * i / threads;
-            auto end = base.size() * (i + 1) / threads;
+            auto start = baseCubes.size() * i / threads;
+            auto end = baseCubes.size() * (i + 1) / threads;
 
             ts.push_back(thread(expandPart, ref(baseCubes), ref(multihash[i]), start, end));
         }
         for (int i = 0; i < threads; ++i)
         {
             ts[i].join();
-            for (auto &c : multihash[i])
-            {
-                hashes.insert(c);
-            }
+            hashes.insert(multihash[i].begin(), multihash[i].end());
+            multihash[i].clear();
+            multihash[i].reserve(1);
         }
     }
     printf("  num cubes: %lu\n\r", hashes.size());

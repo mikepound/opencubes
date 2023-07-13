@@ -16,24 +16,10 @@ def pack(polycube: np.ndarray) -> bytes:
     cube_id (bytes): a bytes representation of the polycube
 
     """
-
-    # # Previous implementation:
-    # pack_cube = np.packbits(polycube.flatten(), bitorder='big')
-    # cube_hash = 0
-    # for index in polycube.shape:
-    #     cube_hash = (cube_hash << 8) + int(index)
-    # for part in pack_cube:
-    #     cube_hash = (cube_hash << 8) + int(part)
-    # return cube_hash
-
-    # # dtype should be np.int8: (commented out for efficiency)
-    # if polycube.dtype != np.int8:
-    #     raise TypeError("Polycube must be of type np.int8")
-
-    # pack cube
-    data = polycube.tobytes() + polycube.shape[0].to_bytes(1, 'big') \
-                              + polycube.shape[1].to_bytes(1, 'big') \
-                              + polycube.shape[2].to_bytes(1, 'big')
+    data =  polycube.shape[0].to_bytes(1, 'little') \
+            + polycube.shape[1].to_bytes(1, 'little') \
+            + polycube.shape[2].to_bytes(1, 'little') \
+            + np.packbits(polycube.flatten(), bitorder='little').tobytes()
     return data
 
 
@@ -50,10 +36,8 @@ def unpack(cube_id: bytes) -> np.ndarray:
         
     """
     # Extract shape information
-    shape = (cube_id[-3], cube_id[-2], cube_id[-1])
-
-    # Create ndarray from byte data
-    polycube = np.frombuffer(cube_id[:-3], dtype=np.int8)
-    polycube = polycube.reshape(shape)
+    shape = (cube_id[0], cube_id[1], cube_id[2])
+    size = shape[0] * shape[1] * shape[2]
+    polycube = np.unpackbits(np.frombuffer(cube_id[3:], dtype=np.uint8), count=size, bitorder='little').reshape(shape)
     return polycube
 

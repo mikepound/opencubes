@@ -1,5 +1,6 @@
 # custom ignores to prevent including cubes files
 *.npy
+*.pcube
 
 # custom ignores to prevent vscode files being included
 .vscode

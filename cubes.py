@@ -42,13 +42,13 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
     else:
         pollycubes = generate_polycubes(n-1, use_cache)
 
-        hashes = set()
+        known_ids = set()
         done = 0
         print(f"\nHashing polycubes n={n}")
         for base_cube in pollycubes:
             for new_cube in expand_cube(base_cube):
-                cube_hash = get_canoincal_packing(new_cube, hashes)
-                hashes.add(cube_hash)
+                cube_id = get_canonical_packing(new_cube, known_ids)
+                known_ids.add(cube_id)
             log_if_needed(done, len(pollycubes))
             done += 1
         log_if_needed(done, len(pollycubes))
@@ -56,11 +56,11 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
         print(f"\nGenerating polycubes from hash n={n}")
         results = []
         done = 0
-        for cube_hash in hashes:
-            results.append(unpack(cube_hash))
-            log_if_needed(done, len(hashes))
+        for cube_id in known_ids:
+            results.append(unpack(cube_id))
+            log_if_needed(done, len(known_ids))
             done += 1
-        log_if_needed(done, len(hashes))
+        log_if_needed(done, len(known_ids))
 
     if (use_cache and not cache_exists(n)):
         save_cache(n, results)
@@ -68,28 +68,32 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
     return results
 
 
-def get_canoincal_packing(polycube: np.ndarray, known_hashes: set[int]) -> int:
+def get_canonical_packing(polycube: np.ndarray, 
+                          known_ids: set[bytes]) -> bytes:
     """
     Determines if a polycube has already been seen.
 
-    Considers all possible rotations of a cube against the existing cubes stored in memory.
-    Returns True if the cube exists, or False if it is new.
+    Considers all possible rotations of a polycube against the existing 
+        ones stored in memory. Returns the id if it's found in the set,
+        or the maximum id of all rotations if the polycube is new.
 
     Parameters:
-    polycube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
+    polycube (np.array): 3D Numpy byte array where 1 values indicate 
+        cube positions. Must be of type np.int8
+    known_ids (set[bytes]): A set of all known polycube ids
 
     Returns:
-    hash: the hash for this cube
+    cube_id (bytes): the id for this cube
 
     """
-    max_hash = 0
+    max_id = b'\x00'
     for cube_rotation in all_rotations(polycube):
-        this_hash = pack(cube_rotation)
-        if(this_hash in known_hashes):
-            return this_hash
-        if (this_hash > max_hash):
-            max_hash = this_hash
-    return max_hash
+        this_id = pack(cube_rotation)
+        if (this_id in known_ids):
+            return this_id
+        if (this_id > max_id):
+            max_id = this_id
+    return max_id
 
 
 if __name__ == "__main__":

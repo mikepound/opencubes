@@ -6,18 +6,18 @@
 #include <string>
 #include "structs.hpp"
 
-Hashy load(string path)
+Hashy load(std::string path)
 {
-    auto ifs = ifstream(path, ios::binary);
+    auto ifs = std::ifstream(path, std::ios::binary);
     if (!ifs.is_open())
         return {};
     uint8_t cubelen = 0;
     uint filelen = ifs.tellg();
-    ifs.seekg(0, ios::end);
+    ifs.seekg(0, std::ios::end);
     filelen = (uint)ifs.tellg() - filelen;
-    ifs.seekg(0, ios::beg);
+    ifs.seekg(0, std::ios::beg);
     ifs.read((char *)&cubelen, 1);
-    printf("loading cache file \"%s\" (%u bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
+    std::printf("loading cache file \"%s\" (%u bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
 
     auto cubeSize = 4 * (int)cubelen;
     auto numCubes = (filelen - 1) / cubeSize;
@@ -50,11 +50,11 @@ Hashy load(string path)
     return cubes;
 }
 
-void save(string path, Hashy &cubes, uint8_t n)
+void save(std::string path, Hashy &cubes, uint8_t n)
 {
     if (cubes.size() == 0)
         return;
-    ofstream ofs(path, ios::binary);
+    std::ofstream ofs(path, std::ios::binary);
     ofs << n;
     for (const auto &s : cubes.byshape)
         for (const auto &c : s.second.set)

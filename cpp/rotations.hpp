@@ -9,7 +9,7 @@
 struct Rotations
 {
     // ix,iy,iz,  sx,sy,sz. new component index and sign
-    static constexpr array<int, 6> LUT[] = {
+    static constexpr std::array<int, 6> LUT[] = {
         {0, 1, 2, 1, 1, 1}, // identity
         {0, 1, 2, -1, -1, 1},
         {0, 1, 2, -1, 1, -1},
@@ -35,7 +35,7 @@ struct Rotations
         {2, 1, 0, 1, -1, 1},
         {2, 1, 0, 1, 1, -1},
     };
-    static pair<XYZ, vector<XYZ>> rotate(int i, std::array<int, 3> shape, const std::vector<XYZ> &orig)
+    static std::pair<XYZ, std::vector<XYZ>> rotate(int i, std::array<int, 3> shape, const std::vector<XYZ> &orig)
     {
         const auto L = LUT[i];
         XYZ out_shape{shape[L[0]], shape[L[1]], shape[L[2]]};

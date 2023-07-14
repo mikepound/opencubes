@@ -7,7 +7,6 @@
 #include <mutex>
 #include <map>
 
-using namespace std;
 // #define DBG 1
 struct XYZ
 {
@@ -27,7 +26,7 @@ struct XYZ
 
 struct Cube
 {
-    vector<XYZ> sparse;
+    std::vector<XYZ> sparse;
     bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
     bool operator<(const Cube &b) const
     {
@@ -82,12 +81,12 @@ struct Hashy
 {
     struct Subhashy
     {
-        unordered_set<Cube> set;
+        std::unordered_set<Cube> set;
 
-        mutex set_mutex;
+        std::mutex set_mutex;
         void insert(const Cube &c)
         {
-            lock_guard<mutex> lock(set_mutex);
+            std::lock_guard<std::mutex> lock(set_mutex);
             set.insert(c);
         }
         auto size()
@@ -96,7 +95,7 @@ struct Hashy
         }
     };
 
-    map<XYZ, Subhashy> byshape;
+    std::map<XYZ, Subhashy> byshape;
     void init(int n)
     {
         // create all subhashy which will be needed for N
@@ -104,7 +103,7 @@ struct Hashy
             for (int y = x; y < (n - x); ++y)
                 for (int z = y; z < (n - x - y); ++z)
                     byshape[XYZ{x, y, z}].size();
-        printf("%ld maps by shape\n\r", byshape.size());
+        std::printf("%ld maps by shape\n\r", byshape.size());
     }
 
     void insert(const Cube &c, XYZ shape)

@@ -5,7 +5,6 @@
 #include <iostream>
 #include <thread>
 
-using namespace std;
 #include "results.hpp"
 #include "structs.hpp"
 #include "rotations.hpp"
@@ -15,7 +14,7 @@ bool USE_CACHE = 1;
 
 void expand(const Cube &c, Hashy &hashes)
 {
-    unordered_set<XYZ> candidates;
+    std::unordered_set<XYZ> candidates;
     for (const auto &p : c.sparse)
     {
         candidates.insert(XYZ{p.x + 1, p.y, p.z});
@@ -81,20 +80,20 @@ void expand(const Cube &c, Hashy &hashes)
         }
         hashes.insert(lowestHashCube, lowestShape);
 #ifdef DBG
-        printf("=====\n\r");
-        rotatedCube.print();
-        printf("inserted! (num %2lu)\n\n\r", hashes.size());
+        std::printf("=====\n\r");
+        lowestHashCube.print();
+        std::printf("inserted! (num %2lu)\n\n\r", hashes.size());
 #endif
     }
 #ifdef DBG
-    printf("new hashes: %lu\n\r", hashes.size());
+    std::printf("new hashes: %lu\n\r", hashes.size());
 #endif
 }
 
-void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
+void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
 {
     printf("  start from %lu to %lu\n\r", start, end);
-    auto t_start = chrono::steady_clock::now();
+    auto t_start = std::chrono::steady_clock::now();
 
     for (auto i = start; i < end; ++i)
     {
@@ -102,19 +101,19 @@ void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
         auto count = i - start;
         if (start == 0 && (count % 100 == 99))
         {
-            auto t_end = chrono::steady_clock::now();
-            auto dt_ms = chrono::duration_cast<chrono::milliseconds>(t_end - t_start).count();
+            auto t_end = std::chrono::steady_clock::now();
+            auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
             auto perc = 100 * count / (end - start);
             auto its = 1000.f * count / dt_ms;
             auto remaining = (end - i) / its;
-            printf(" %3lu%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
-            flush(cout);
+            std::printf(" %3lu%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+            std::flush(std::cout);
         }
     }
-    auto t_end = chrono::steady_clock::now();
-    auto dt_ms = chrono::duration_cast<chrono::milliseconds>(t_end - t_start).count();
-    printf("  done from %lu to %lu: found %lu\n\r", start, end, hashes.size());
-    printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
+    auto t_end = std::chrono::steady_clock::now();
+    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+    std::printf("  done from %lu to %lu: found %lu\n\r", start, end, hashes.size());
+    std::printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
 }
 
 Hashy gen(int n, int threads = 1)
@@ -125,31 +124,31 @@ Hashy gen(int n, int threads = 1)
     else if (n == 1)
     {
         hashes.insert({{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
-        printf("%ld elements for %d\n\r", hashes.size(), n);
+        std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
     else if (n == 2)
     {
         hashes.insert({{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
-        printf("%ld elements for %d\n\r", hashes.size(), n);
+        std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
 
     if (USE_CACHE)
     {
-        hashes = load("cubes_" + to_string(n) + ".bin");
+        hashes = load("cubes_" + std::to_string(n) + ".bin");
 
         if (hashes.size() != 0)
             return hashes;
     }
 
     auto base = gen(n - 1, threads);
-    printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
+    std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
     hashes.init(n);
     int count = 0;
     if (threads == 1 || base.size() < 100)
     {
-        auto start = chrono::steady_clock::now();
+        auto start = std::chrono::steady_clock::now();
         int total = base.size();
 
         for (const auto &s : base.byshape)
@@ -161,52 +160,52 @@ Hashy gen(int n, int threads = 1)
                 count++;
                 if (count % 100 == 99)
                 {
-                    auto end = chrono::steady_clock::now();
-                    auto dt_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+                    auto end = std::chrono::steady_clock::now();
+                    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
                     auto perc = 100 * count / total;
                     auto its = 1000.f * count / dt_ms;
                     auto remaining = (total - count) / its;
                     printf(" %3d%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
-                    flush(cout);
+                    std::flush(std::cout);
                 }
             }
         }
-        auto end = chrono::steady_clock::now();
-        auto dt_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-        printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
+        auto end = std::chrono::steady_clock::now();
+        auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        std::printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
     }
     else
     {
-        vector<Cube> baseCubes;
-        printf("converting to vector\n\r");
+        std::vector<Cube> baseCubes;
+        std::printf("converting to vector\n\r");
         for (auto &s : base.byshape)
         {
             baseCubes.insert(baseCubes.end(), s.second.set.begin(), s.second.set.end());
             s.second.set.clear();
             s.second.set.reserve(1);
         }
-        printf("starting %d threads\n\r", threads);
-        vector<thread> ts;
+        std::printf("starting %d threads\n\r", threads);
+        std::vector<std::thread> ts;
         for (int i = 0; i < threads; ++i)
         {
             auto start = baseCubes.size() * i / threads;
             auto end = baseCubes.size() * (i + 1) / threads;
 
-            ts.push_back(thread(expandPart, ref(baseCubes), ref(hashes), start, end));
+            ts.push_back(std::thread(expandPart, std::ref(baseCubes), std::ref(hashes), start, end));
         }
         for (int i = 0; i < threads; ++i)
         {
             ts[i].join();
         }
     }
-    printf("  num cubes: %lu\n\r", hashes.size());
-    save("cubes_" + to_string(n) + ".bin", hashes, n);
+    std::printf("  num cubes: %lu\n\r", hashes.size());
+    save("cubes_" + std::to_string(n) + ".bin", hashes, n);
     if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1)
     {
         if (results[n - 1] != hashes.size())
         {
-            printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
-            exit(-1);
+            std::printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
+            std::exit(-1);
         }
     }
     return hashes;
@@ -216,8 +215,8 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        printf("usage: %s N [NUM_THREADS]\n\r", argv[0]);
-        exit(-1);
+        std::printf("usage: %s N [NUM_THREADS]\n\r", argv[0]);
+        std::exit(-1);
     }
     int n = atoi(argv[1]);
 

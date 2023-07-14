@@ -60,16 +60,20 @@ void expand(const Cube &c, Hashy &hashes)
         // newCube.print();
 
         // check rotations
-        Cube rotatedCube;
         Cube lowestHashCube;
+        bool none_set = true;
         for (int i = 0; i < 24; ++i)
         {
-            rotatedCube = Cube{Rotations::rotate(i, shape, newCube.sparse)};
+            auto res = Rotations::rotate(i, shape, newCube.sparse);
+            if (res.second.size() == 0)
+                continue; // rotation generated violating shape
+            Cube rotatedCube{res.second};
             std::sort(rotatedCube.sparse.begin(), rotatedCube.sparse.end());
-            // printf("%d --- ---\n\r", i);
-            // rotatedCube.print();
-            if (i == 0 || lowestHashCube < rotatedCube)
+
+            if (none_set || lowestHashCube < rotatedCube)
             {
+                none_set = false;
+                // printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
                 lowestHashCube = rotatedCube;
             }
         }

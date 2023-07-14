@@ -3,7 +3,7 @@
 #include <fstream>
 #include "structs.hpp"
 
-unordered_set<Cube> load(string path)
+Hashy load(string path)
 {
     auto ifs = ifstream(path, ios::binary);
     if (!ifs.is_open())
@@ -24,32 +24,41 @@ unordered_set<Cube> load(string path)
         return {};
     }
     printf("  num polycubes loading: %d\n\r", numCubes);
-    unordered_set<Cube> cubes;
+    Hashy cubes;
+    cubes.init(cubelen);
     for (int i = 0; i < numCubes; ++i)
     {
         Cube next;
         next.sparse.resize(cubelen);
+        XYZ shape;
         for (int k = 0; k < cubelen; ++k)
         {
             ifs.read((char *)&next.sparse[k].joined, 4);
+            if (next.sparse[k].x > shape.x)
+                shape.x = next.sparse[k].x;
+            if (next.sparse[k].y > shape.y)
+                shape.y = next.sparse[k].y;
+            if (next.sparse[k].z > shape.z)
+                shape.z = next.sparse[k].z;
         }
-        cubes.insert(next);
+        cubes.insert(next, shape);
     }
     printf("  loaded %lu cubes\n\r", cubes.size());
     return cubes;
 }
 
-void save(string path, unordered_set<Cube> &cubes)
+void save(string path, Hashy &cubes, uint8_t n)
 {
     if (cubes.size() == 0)
         return;
     ofstream ofs(path, ios::binary);
-    ofs << (uint8_t)cubes.begin()->sparse.size();
-    for (const auto &c : cubes)
-    {
-        for (const auto &p : c.sparse)
+    ofs << n;
+    for (const auto &s : cubes.byshape)
+        for (const auto &c : s.second.set)
         {
-            ofs.write((const char *)&p.joined, sizeof(p.joined));
+            for (const auto &p : c.sparse)
+            {
+                ofs.write((const char *)&p.joined, sizeof(p.joined));
+            }
         }
-    }
 }

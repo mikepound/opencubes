@@ -2,6 +2,7 @@
 #include <vector>
 #include <unordered_set>
 #include <mutex>
+#include <map>
 
 using namespace std;
 // #define DBG 1
@@ -39,7 +40,7 @@ struct Cube
         return false;
     }
 
-    void print()
+    void print() const
     {
         for (auto &p : sparse)
             printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
@@ -76,16 +77,46 @@ namespace std
 
 struct Hashy
 {
-    unordered_set<Cube> set;
-
-    mutex set_mutex;
-    void insert(const Cube &c)
+    struct Subhashy
     {
-        lock_guard<mutex> lock(set_mutex);
-        set.insert(c);
+        unordered_set<Cube> set;
+
+        mutex set_mutex;
+        void insert(const Cube &c)
+        {
+            lock_guard<mutex> lock(set_mutex);
+            set.insert(c);
+        }
+        auto size()
+        {
+            return set.size();
+        }
+    };
+
+    map<XYZ, Subhashy> byshape;
+    void init(int n)
+    {
+        // create all subhashy which will be needed for N
+        for (int x = 0; x < n; ++x)
+            for (int y = x; y < (n - x); ++y)
+                for (int z = y; z < (n - x - y); ++z)
+                    byshape[XYZ{x, y, z}].size();
+        printf("%ld maps by shape\n\r", byshape.size());
     }
+
+    void insert(const Cube &c, XYZ shape)
+    {
+        // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
+        // c.print();
+        byshape[shape].insert(c);
+        // printf("new size %ld\n\r", byshape[shape].size());
+    }
+
     auto size()
     {
-        return set.size();
+        size_t sum = 0;
+        for (const auto &set : byshape)
+            sum += set.second.set.size();
+        return sum;
     }
 };

@@ -61,6 +61,7 @@ void expand(const Cube &c, Hashy &hashes)
 
         // check rotations
         Cube lowestHashCube;
+        XYZ lowestShape;
         bool none_set = true;
         for (int i = 0; i < 24; ++i)
         {
@@ -75,9 +76,10 @@ void expand(const Cube &c, Hashy &hashes)
                 none_set = false;
                 // printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
                 lowestHashCube = rotatedCube;
+                lowestShape = res.first;
             }
         }
-        hashes.insert(lowestHashCube);
+        hashes.insert(lowestHashCube, lowestShape);
 #ifdef DBG
         printf("=====\n\r");
         rotatedCube.print();
@@ -115,44 +117,58 @@ void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
     printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
 }
 
-unordered_set<Cube> gen(int n, int threads = 1)
+Hashy gen(int n, int threads = 1)
 {
+    Hashy hashes;
     if (n < 1)
         return {};
     else if (n == 1)
-        return {{{XYZ{0, 0, 0}}}};
+    {
+        hashes.insert({{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
+        printf("%ld elements for %d\n\r", hashes.size(), n);
+        return hashes;
+    }
     else if (n == 2)
-        return {{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}};
+    {
+        hashes.insert({{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
+        printf("%ld elements for %d\n\r", hashes.size(), n);
+        return hashes;
+    }
 
-    Hashy hashes;
     if (USE_CACHE)
     {
-        hashes.set = load("cubes_" + to_string(n) + ".bin");
+        hashes = load("cubes_" + to_string(n) + ".bin");
 
         if (hashes.size() != 0)
-            return hashes.set;
+            return hashes;
     }
 
     auto base = gen(n - 1, threads);
     printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
+    hashes.init(n);
     int count = 0;
     if (threads == 1 || base.size() < 100)
     {
         auto start = chrono::steady_clock::now();
         int total = base.size();
-        for (const auto &b : base)
+
+        for (const auto &s : base.byshape)
         {
-            expand(b, hashes);
-            count++;
-            if (count % 100 == 99)
+            // printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
+            for (const auto &b : s.second.set)
             {
-                auto end = chrono::steady_clock::now();
-                auto dt_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-                auto perc = 100 * count / total;
-                auto its = 1000.f * count / dt_ms;
-                auto remaining = (total - count) / its;
-                printf(" %3d%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
-                flush(cout);
+                expand(b, hashes);
+                count++;
+                if (count % 100 == 99)
+                {
+                    auto end = chrono::steady_clock::now();
+                    auto dt_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+                    auto perc = 100 * count / total;
+                    auto its = 1000.f * count / dt_ms;
+                    auto remaining = (total - count) / its;
+                    printf(" %3d%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+                    flush(cout);
+                }
             }
         }
         auto end = chrono::steady_clock::now();
@@ -163,11 +179,12 @@ unordered_set<Cube> gen(int n, int threads = 1)
     {
         vector<Cube> baseCubes;
         printf("converting to vector\n\r");
-        baseCubes.insert(baseCubes.end(), base.begin(), base.end());
-        base.clear();
-        base.reserve(1);
-        printf("sorting vector\n\r");
-        sort(baseCubes.begin(), baseCubes.end());
+        for (auto &s : base.byshape)
+        {
+            baseCubes.insert(baseCubes.end(), s.second.set.begin(), s.second.set.end());
+            s.second.set.clear();
+            s.second.set.reserve(1);
+        }
         printf("starting %d threads\n\r", threads);
         vector<thread> ts;
         for (int i = 0; i < threads; ++i)
@@ -183,7 +200,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
         }
     }
     printf("  num cubes: %lu\n\r", hashes.size());
-    save("cubes_" + to_string(n) + ".bin", hashes.set);
+    save("cubes_" + to_string(n) + ".bin", hashes, n);
     if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1)
     {
         if (results[n - 1] != hashes.size())
@@ -192,7 +209,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
             exit(-1);
         }
     }
-    return std::move(hashes.set);
+    return hashes;
 }
 
 int main(int argc, char **argv)

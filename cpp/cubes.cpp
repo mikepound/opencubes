@@ -1,176 +1,15 @@
+// #define DBG 1
+
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <unordered_set>
-#include <vector>
-#include <fstream>
 
 using namespace std;
-// #define DBG 1
-struct XYZ
-{
-    union
-    {
-        struct
-        {
-            int8_t x, y, z, res;
-        };
-        int8_t data[4];
-        int32_t joined;
-    };
-    explicit XYZ(int a = 0, int b = 0, int c = 0) : x(a), y(b), z(c), res(0) {}
-    bool operator==(const XYZ &rhs) const { return joined == rhs.joined; }
-    bool operator<(const XYZ &b) const { return joined < b.joined; }
-};
-namespace std
-{
-    template <>
-    struct hash<XYZ>
-    {
-        size_t operator()(const XYZ &x) const { return x.joined; }
-    };
-} // namespace std
-
-struct Rotations
-{
-    static constexpr array<int, 6> LUT[] = {
-        {0, 1, 2, -1, -1, 1},
-        {0, 1, 2, -1, 1, -1},
-        {0, 1, 2, 1, -1, -1},
-        {0, 1, 2, 1, 1, 1},
-        {0, 2, 1, -1, -1, -1},
-        {0, 2, 1, -1, 1, 1},
-        {0, 2, 1, 1, -1, 1},
-        {0, 2, 1, 1, 1, -1},
-        {1, 0, 2, -1, -1, -1},
-        {1, 0, 2, -1, 1, 1},
-        {1, 0, 2, 1, -1, 1},
-        {1, 0, 2, 1, 1, -1},
-        {1, 2, 0, -1, -1, 1},
-        {1, 2, 0, -1, 1, -1},
-        {1, 2, 0, 1, -1, -1},
-        {1, 2, 0, 1, 1, 1},
-        {2, 0, 1, -1, -1, 1},
-        {2, 0, 1, -1, 1, -1},
-        {2, 0, 1, 1, -1, -1},
-        {2, 0, 1, 1, 1, 1},
-        {2, 1, 0, -1, -1, -1},
-        {2, 1, 0, -1, 1, 1},
-        {2, 1, 0, 1, -1, 1},
-        {2, 1, 0, 1, 1, -1},
-    };
-    static std::vector<XYZ> rotate(int i, std::array<int, 3> shape, const std::vector<XYZ> &orig)
-    {
-        std::vector<XYZ> res;
-        res.reserve(orig.size());
-        const auto L = LUT[i];
-        for (const auto &o : orig)
-        {
-            XYZ next;
-            if (L[3] < 0)
-                next.x = shape[L[0]] - o.data[L[0]];
-            else
-                next.x = o.data[L[0]];
-
-            if (L[4] < 0)
-                next.y = shape[L[1]] - o.data[L[1]];
-            else
-                next.y = o.data[L[1]];
-
-            if (L[5] < 0)
-                next.z = shape[L[2]] - o.data[L[2]];
-            else
-                next.z = o.data[L[2]];
-            res.push_back(next);
-        }
-        return res;
-    }
-};
-
-struct Cube
-{
-    vector<XYZ> sparse;
-    bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
-    void print()
-    {
-        for (auto &p : sparse)
-            printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
-    }
-};
-namespace std
-{
-    template <>
-    struct hash<Cube>
-    {
-        size_t operator()(const Cube &cube) const
-        {
-            // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
-            std::size_t seed = cube.sparse.size();
-            for (auto &p : cube.sparse)
-            {
-                auto x = std::hash<XYZ>()(p);
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = (x >> 16) ^ x;
-                seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
-            return seed;
-        }
-    };
-} // namespace std
-
-unordered_set<Cube> load(string path)
-{
-    auto ifs = ifstream(path, ios::binary);
-    if (!ifs.is_open())
-        return {};
-    uint8_t cubelen = 0;
-    uint filelen = ifs.tellg();
-    ifs.seekg(0, ios::end);
-    filelen = (uint)ifs.tellg() - filelen;
-    ifs.seekg(0, ios::beg);
-    ifs.read((char *)&cubelen, 1);
-    printf("loading cache file \"%s\" (%u bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
-
-    auto cubeSize = 4 * (int)cubelen;
-    auto numCubes = (filelen - 1) / cubeSize;
-    if (numCubes * cubeSize + 1 != filelen)
-    {
-        printf("error reading file, size does not match");
-        return {};
-    }
-    printf("  num polycubes loading: %d\n\r", numCubes);
-    unordered_set<Cube> cubes;
-    for (int i = 0; i < numCubes; ++i)
-    {
-        Cube next;
-        next.sparse.resize(cubelen);
-        for (int k = 0; k < cubelen; ++k)
-        {
-            ifs.read((char *)&next.sparse[k].joined, 4);
-        }
-        cubes.insert(next);
-    }
-    printf("  loaded %lu cubes\n\r", cubes.size());
-    return cubes;
-}
-
-void save(string path, unordered_set<Cube> &cubes)
-{
-    if (cubes.size() == 0)
-        return;
-    ofstream ofs(path, ios::binary);
-    ofs << (uint8_t)cubes.begin()->sparse.size();
-    for (const auto &c : cubes)
-    {
-        for (const auto &p : c.sparse)
-        {
-            ofs.write((const char *)&p.joined, sizeof(p.joined));
-        }
-    }
-}
+#include "results.hpp"
+#include "structs.hpp"
+#include "rotations.hpp"
+#include "cache.hpp"
 
 void expand(const Cube &c, unordered_set<Cube> &hashes)
 {
@@ -186,7 +25,7 @@ void expand(const Cube &c, unordered_set<Cube> &hashes)
     }
     for (const auto &p : c.sparse)
     {
-        candidates.erase(XYZ{p.x, p.y, p.z});
+        candidates.erase(p);
     }
 #ifdef DBG
     printf("candidates: %lu\n\r", candidates.size());
@@ -220,36 +59,24 @@ void expand(const Cube &c, unordered_set<Cube> &hashes)
 
         // check rotations
         Cube rotatedCube;
-        bool found = false;
-        Cube lowestHash;
-        size_t currentHash = -1;
+        Cube lowestHashCube;
         for (int i = 0; i < 24; ++i)
         {
             rotatedCube = Cube{Rotations::rotate(i, shape, newCube.sparse)};
             std::sort(rotatedCube.sparse.begin(), rotatedCube.sparse.end());
             // printf("%d --- ---\n\r", i);
             // rotatedCube.print();
-            if (hashes.count(rotatedCube))
+            if (i == 0 || lowestHashCube < rotatedCube)
             {
-                found = true;
-                break;
-            }
-            auto h = hash<Cube>()(rotatedCube);
-            if (currentHash > h)
-            {
-                currentHash = h;
-                lowestHash = rotatedCube;
+                lowestHashCube = rotatedCube;
             }
         }
-        if (!found)
-        {
-            hashes.insert(lowestHash);
+        hashes.insert(lowestHashCube);
 #ifdef DBG
-            printf("=====\n\r");
-            rotatedCube.print();
-            printf("inserted! (num %2lu)\n\n\r", hashes.size());
+        printf("=====\n\r");
+        rotatedCube.print();
+        printf("inserted! (num %2lu)\n\n\r", hashes.size());
 #endif
-        }
     }
 #ifdef DBG
     printf("new hashes: %lu\n\r", hashes.size());
@@ -289,7 +116,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
     else if (n == 1)
         return {{{XYZ{0, 0, 0}}}};
     else if (n == 2)
-        return {{{XYZ{0, 0, 0}, XYZ{1, 0, 0}}}};
+        return {{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}};
     auto hashes =
         load("cubes_" + to_string(n) + ".bin");
 
@@ -348,6 +175,14 @@ unordered_set<Cube> gen(int n, int threads = 1)
     }
     printf("  num cubes: %lu\n\r", hashes.size());
     save("cubes_" + to_string(n) + ".bin", hashes);
+    if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1)
+    {
+        if (results[n - 1] != hashes.size())
+        {
+            printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
+            exit(-1);
+        }
+    }
     return hashes;
 }
 

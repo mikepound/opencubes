@@ -13,7 +13,7 @@ using namespace std;
 
 bool USE_CACHE = 1;
 
-void expand(const Cube &c, unordered_set<Cube> &hashes)
+void expand(const Cube &c, Hashy &hashes)
 {
     unordered_set<XYZ> candidates;
     for (const auto &p : c.sparse)
@@ -85,7 +85,7 @@ void expand(const Cube &c, unordered_set<Cube> &hashes)
 #endif
 }
 
-void expandPart(vector<Cube> &base, unordered_set<Cube> &hashes, size_t start, size_t end)
+void expandPart(vector<Cube> &base, Hashy &hashes, size_t start, size_t end)
 {
     printf("  start from %lu to %lu\n\r", start, end);
     auto t_start = chrono::steady_clock::now();
@@ -94,14 +94,14 @@ void expandPart(vector<Cube> &base, unordered_set<Cube> &hashes, size_t start, s
     {
         expand(base[i], hashes);
         auto count = i - start;
-        if (start == 0 && (count % 100 == 0))
+        if (start == 0 && (count % 100 == 99))
         {
             auto t_end = chrono::steady_clock::now();
             auto dt_ms = chrono::duration_cast<chrono::milliseconds>(t_end - t_start).count();
             auto perc = 100 * count / (end - start);
             auto its = 1000.f * count / dt_ms;
             auto remaining = (end - i) / its;
-            printf(" %3lu%% %5.0f it/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+            printf(" %3lu%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
             flush(cout);
         }
     }
@@ -120,13 +120,13 @@ unordered_set<Cube> gen(int n, int threads = 1)
     else if (n == 2)
         return {{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}};
 
-    unordered_set<Cube> hashes;
+    Hashy hashes;
     if (USE_CACHE)
     {
-        hashes = load("cubes_" + to_string(n) + ".bin");
+        hashes.set = load("cubes_" + to_string(n) + ".bin");
 
         if (hashes.size() != 0)
-            return hashes;
+            return hashes.set;
     }
 
     auto base = gen(n - 1, threads);
@@ -135,19 +135,19 @@ unordered_set<Cube> gen(int n, int threads = 1)
     if (threads == 1 || base.size() < 100)
     {
         auto start = chrono::steady_clock::now();
-
+        int total = base.size();
         for (const auto &b : base)
         {
             expand(b, hashes);
             count++;
-            if (count % 100 == 0)
+            if (count % 100 == 99)
             {
                 auto end = chrono::steady_clock::now();
                 auto dt_ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-                auto perc = 100 * count / (int)base.size();
+                auto perc = 100 * count / total;
                 auto its = 1000.f * count / dt_ms;
-                auto remaining = ((int)base.size() - count) / its;
-                printf(" %3d%% %5.0f it/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+                auto remaining = (total - count) / its;
+                printf(" %3d%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
                 flush(cout);
             }
         }
@@ -158,29 +158,28 @@ unordered_set<Cube> gen(int n, int threads = 1)
     else
     {
         vector<Cube> baseCubes;
+        printf("converting to vector\n\r");
         baseCubes.insert(baseCubes.end(), base.begin(), base.end());
         base.clear();
         base.reserve(1);
+        printf("sorting vector\n\r");
+        sort(baseCubes.begin(), baseCubes.end());
         printf("starting %d threads\n\r", threads);
         vector<thread> ts;
-        vector<unordered_set<Cube>> multihash(threads);
         for (int i = 0; i < threads; ++i)
         {
             auto start = baseCubes.size() * i / threads;
             auto end = baseCubes.size() * (i + 1) / threads;
 
-            ts.push_back(thread(expandPart, ref(baseCubes), ref(multihash[i]), start, end));
+            ts.push_back(thread(expandPart, ref(baseCubes), ref(hashes), start, end));
         }
         for (int i = 0; i < threads; ++i)
         {
             ts[i].join();
-            hashes.insert(multihash[i].begin(), multihash[i].end());
-            multihash[i].clear();
-            multihash[i].reserve(1);
         }
     }
     printf("  num cubes: %lu\n\r", hashes.size());
-    save("cubes_" + to_string(n) + ".bin", hashes);
+    save("cubes_" + to_string(n) + ".bin", hashes.set);
     if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1)
     {
         if (results[n - 1] != hashes.size())
@@ -189,7 +188,7 @@ unordered_set<Cube> gen(int n, int threads = 1)
             exit(-1);
         }
     }
-    return hashes;
+    return std::move(hashes.set);
 }
 
 int main(int argc, char **argv)

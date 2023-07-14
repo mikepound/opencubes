@@ -1,5 +1,7 @@
 #pragma once
 #include <vector>
+#include <unordered_set>
+#include <mutex>
 
 using namespace std;
 // #define DBG 1
@@ -71,3 +73,19 @@ namespace std
         }
     };
 } // namespace std
+
+struct Hashy
+{
+    unordered_set<Cube> set;
+
+    mutex set_mutex;
+    void insert(const Cube &c)
+    {
+        lock_guard<mutex> lock(set_mutex);
+        set.insert(c);
+    }
+    auto size()
+    {
+        return set.size();
+    }
+};

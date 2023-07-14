@@ -8,3 +8,10 @@
 ./build.sh
 ./cubes N [NUM_THREADS]
 ```
+
+## environment variable:
+Cache can be disabled by setting USE_CACHE=0
+
+```bash
+USE_CACHE=0 ./cubes N [NUM_THREADS]
+```

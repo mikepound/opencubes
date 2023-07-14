@@ -11,6 +11,8 @@ using namespace std;
 #include "rotations.hpp"
 #include "cache.hpp"
 
+bool USE_CACHE = 1;
+
 void expand(const Cube &c, unordered_set<Cube> &hashes)
 {
     unordered_set<XYZ> candidates;
@@ -117,11 +119,15 @@ unordered_set<Cube> gen(int n, int threads = 1)
         return {{{XYZ{0, 0, 0}}}};
     else if (n == 2)
         return {{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}};
-    auto hashes =
-        load("cubes_" + to_string(n) + ".bin");
 
-    if (hashes.size() != 0)
-        return hashes;
+    unordered_set<Cube> hashes;
+    if (USE_CACHE)
+    {
+        hashes = load("cubes_" + to_string(n) + ".bin");
+
+        if (hashes.size() != 0)
+            return hashes;
+    }
 
     auto base = gen(n - 1, threads);
     printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
@@ -194,9 +200,13 @@ int main(int argc, char **argv)
         exit(-1);
     }
     int n = atoi(argv[1]);
+
     int threads = 1;
     if (argc > 2)
         threads = atoi(argv[2]);
+
+    if (const char *p = getenv("USE_CACHE"))
+        USE_CACHE = atoi(p);
     gen(n, threads);
     return 0;
 }

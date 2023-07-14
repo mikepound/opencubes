@@ -1,6 +1,9 @@
 #pragma once
+#ifndef OPENCUBES_CACHE_HPP
+#define OPENCUBES_CACHE_HPP
 #include <unordered_set>
 #include <fstream>
+#include <string>
 #include "structs.hpp"
 
 Hashy load(string path)
@@ -62,3 +65,5 @@ void save(string path, Hashy &cubes, uint8_t n)
             }
         }
 }
+
+#endif

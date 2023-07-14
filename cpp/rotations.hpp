@@ -1,5 +1,6 @@
 #pragma once
-
+#ifndef OPENCUBES_ROTATIONS_HPP
+#define OPENCUBES_ROTATIONS_HPP
 #include <vector>
 #include <array>
 
@@ -64,3 +65,4 @@ struct Rotations
         return {out_shape, res};
     }
 };
+#endif

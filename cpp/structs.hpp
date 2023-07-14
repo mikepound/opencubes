@@ -1,4 +1,7 @@
 #pragma once
+#ifndef OPENCUBES_STRUCTS_HPP
+#define OPENCUBES_STRUCTS_HPP
+#include <cstdio>
 #include <vector>
 #include <unordered_set>
 #include <mutex>
@@ -120,3 +123,4 @@ struct Hashy
         return sum;
     }
 };
+#endif

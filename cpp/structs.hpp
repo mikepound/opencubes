@@ -9,20 +9,24 @@
 
 // #define DBG 1
 struct XYZ {
-    union {
-        struct {
-            int8_t x, y, z, res;
-        };
-        int8_t data[4];
-        int32_t joined;
-    };
-    explicit XYZ(int a = 0, int b = 0, int c = 0) : x(a), y(b), z(c), res(0) {}
-    bool operator==(const XYZ &rhs) const { return joined == rhs.joined; }
-    bool operator<(const XYZ &b) const { return joined < b.joined; }
+    int8_t data[3];
+    explicit XYZ(int8_t a = 0, int8_t b = 0, int8_t c = 0) : data{a, b, c} {}
+    constexpr bool operator==(const XYZ &b) const { return (uint32_t) * this == (uint32_t)b; }
+    constexpr bool operator<(const XYZ &b) const { return (uint32_t) * this < (uint32_t)b; }
+    constexpr operator uint32_t() const { return ((uint8_t)data[0] << 16) | ((uint8_t)data[1] << 8) | ((uint8_t)data[2]); }
+
+    constexpr int8_t &x() { return data[0]; }
+    constexpr int8_t &y() { return data[1]; }
+    constexpr int8_t &z() { return data[2]; }
+    constexpr int8_t x() const { return data[0]; }
+    constexpr int8_t y() const { return data[1]; }
+    constexpr int8_t z() const { return data[2]; }
+    constexpr int8_t &operator[](int offset) { return data[offset]; }
+    constexpr int8_t operator[](int offset) const { return data[offset]; }
 };
 
 struct HashXYZ {
-    size_t operator()(const XYZ &p) const { return p.joined; }
+    size_t operator()(const XYZ &p) const { return (uint32_t)p; }
 };
 
 using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
@@ -55,16 +59,16 @@ struct Cube {
     bool operator<(const Cube &b) const {
         if (size() != b.size()) return size() < b.size();
         for (size_t i = 0; i < size(); ++i) {
-            if (sparse[i].joined < b.sparse[i].joined)
+            if (sparse[i] < b.sparse[i])
                 return true;
-            else if (sparse[i].joined > b.sparse[i].joined)
+            else if (sparse[i] > b.sparse[i])
                 return false;
         }
         return false;
     }
 
     void print() const {
-        for (auto &p : sparse) std::printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
+        for (auto &p : sparse) std::printf("  (%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
     }
 };
 
@@ -116,7 +120,7 @@ struct Hashy {
                 for (int z = y; z < (n - x - y); ++z) {
                     if ((x + 1) * (y + 1) * (z + 1) < n)  // not enough space for n cubes
                         continue;
-                    byshape[XYZ{x, y, z}].size();
+                    byshape[XYZ(x, y, z)].size();
                 }
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
@@ -124,10 +128,10 @@ struct Hashy {
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
 #ifndef NDEBUG
-        // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
+        // printf("insert into shape %d %d %d\n", shape.x(), shape.y(), shape.z());
         // c.print();
         if (byshape.find(shape) == byshape.end()) {
-            printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x, shape.y, shape.z);
+            printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x(), shape.y(), shape.z());
             exit(-1);
         }
 #endif
@@ -144,7 +148,7 @@ struct Hashy {
         for (auto &set : byshape) {
             auto part = set.second.size();
 #ifdef DBG
-            std::printf("bucket [%2d %2d %2d]: %ld\n", set.first.x, set.first.y, set.first.z, part);
+            std::printf("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
 #endif
             sum += part;
         }

@@ -19,12 +19,12 @@ void expand(const Cube &c, Hashy &hashes) {
     XYZSet candidates;
     candidates.reserve(c.size() * 6);
     for (const auto &p : c) {
-        candidates.emplace(XYZ{p.x + 1, p.y, p.z});
-        candidates.emplace(XYZ{p.x - 1, p.y, p.z});
-        candidates.emplace(XYZ{p.x, p.y + 1, p.z});
-        candidates.emplace(XYZ{p.x, p.y - 1, p.z});
-        candidates.emplace(XYZ{p.x, p.y, p.z + 1});
-        candidates.emplace(XYZ{p.x, p.y, p.z - 1});
+        candidates.emplace(XYZ(p.x() + 1, p.y(), p.z()));
+        candidates.emplace(XYZ(p.x() - 1, p.y(), p.z()));
+        candidates.emplace(XYZ(p.x(), p.y() + 1, p.z()));
+        candidates.emplace(XYZ(p.x(), p.y() - 1, p.z()));
+        candidates.emplace(XYZ(p.x(), p.y(), p.z() + 1));
+        candidates.emplace(XYZ(p.x(), p.y(), p.z() - 1));
     }
     for (const auto &p : c) {
         candidates.erase(p);
@@ -34,23 +34,23 @@ void expand(const Cube &c, Hashy &hashes) {
 #endif
     for (const auto &p : candidates) {
 #ifdef DBG
-        std::printf("(%2d %2d %2d)\n\r", p.x, p.y, p.z);
+        std::printf("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
 #endif
-        int ax = (p.x < 0) ? 1 : 0;
-        int ay = (p.y < 0) ? 1 : 0;
-        int az = (p.z < 0) ? 1 : 0;
+        int ax = (p.x() < 0) ? 1 : 0;
+        int ay = (p.y() < 0) ? 1 : 0;
+        int az = (p.z() < 0) ? 1 : 0;
         Cube newCube;
         newCube.reserve(c.size() + 1);
-        newCube.emplace_back(XYZ{p.x + ax, p.y + ay, p.z + az});
-        std::array<int, 3> shape{p.x + ax, p.y + ay, p.z + az};
+        newCube.emplace_back(XYZ(p.x() + ax, p.y() + ay, p.z() + az));
+        XYZ shape(p.x() + ax, p.y() + ay, p.z() + az);
         for (const auto &np : c) {
-            auto nx = np.x + ax;
-            auto ny = np.y + ay;
-            auto nz = np.z + az;
+            auto nx = np.x() + ax;
+            auto ny = np.y() + ay;
+            auto nz = np.z() + az;
             if (nx > shape[0]) shape[0] = nx;
             if (ny > shape[1]) shape[1] = ny;
             if (nz > shape[2]) shape[2] = nz;
-            newCube.emplace_back(XYZ{nx, ny, nz});
+            newCube.emplace_back(XYZ(nx, ny, nz));
         }
         // std::printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
         // newCube.print();
@@ -67,7 +67,7 @@ void expand(const Cube &c, Hashy &hashes) {
 
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
-                // std::printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
+                // std::printf("shape %2d %2d %2d\n\r", res.first.x(), res.first.y(), res.first.z());
                 lowestHashCube = std::move(rotatedCube);
                 lowestShape = res.first;
             }
@@ -114,11 +114,11 @@ Hashy gen(uint n, int threads = 1) {
     if (n < 1)
         return {};
     else if (n == 1) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
+        hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     } else if (n == 2) {
-        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
+        hashes.insert(Cube{{XYZ(0, 0, 0), XYZ(0, 0, 1)}}, XYZ(0, 0, 1));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
@@ -139,7 +139,7 @@ Hashy gen(uint n, int threads = 1) {
         int total = base.size();
 
         for (const auto &s : base.byshape) {
-            // std::printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
+            // std::printf("shapes %d %d %d\n\r", s.first.x(), s.first.y(), s.first.z());
             for (const auto &b : s.second.set) {
                 expand(b, hashes);
                 count++;

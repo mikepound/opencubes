@@ -32,10 +32,14 @@ Hashy load(std::string path) {
         next.sparse.resize(cubelen);
         XYZ shape;
         for (int k = 0; k < cubelen; ++k) {
-            ifs.read((char *)&next.sparse[k].joined, 4);
-            if (next.sparse[k].x > shape.x) shape.x = next.sparse[k].x;
-            if (next.sparse[k].y > shape.y) shape.y = next.sparse[k].y;
-            if (next.sparse[k].z > shape.z) shape.z = next.sparse[k].z;
+            uint32_t tmp;
+            ifs.read((char *)&tmp, 4);
+            next.sparse[k][0] = (tmp >> 16) & 0xff;
+            next.sparse[k][1] = (tmp >> 8) & 0xff;
+            next.sparse[k][2] = (tmp)&0xff;
+            if (next.sparse[k].x() > shape.x()) shape.x() = next.sparse[k].x();
+            if (next.sparse[k].y() > shape.y()) shape.y() = next.sparse[k].y();
+            if (next.sparse[k].z() > shape.z()) shape.z() = next.sparse[k].z();
         }
         cubes.insert(next, shape);
     }
@@ -50,7 +54,8 @@ void save(std::string path, Hashy &cubes, uint8_t n) {
     for (const auto &s : cubes.byshape)
         for (const auto &c : s.second.set) {
             for (const auto &p : c) {
-                ofs.write((const char *)&p.joined, sizeof(p.joined));
+                uint32_t tmp = p;
+                ofs.write((const char *)&tmp, sizeof(tmp));
             }
         }
 }

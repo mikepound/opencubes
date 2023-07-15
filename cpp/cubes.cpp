@@ -11,6 +11,7 @@
 #include "structs.hpp"
 
 bool USE_CACHE = 1;
+bool WRITE_CACHE = 1;
 
 void expand(const Cube &c, Hashy &hashes) {
     XYZSet candidates;
@@ -173,7 +174,7 @@ Hashy gen(int n, int threads = 1) {
         }
     }
     std::printf("  num cubes: %lu\n\r", hashes.size());
-    save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+    if (WRITE_CACHE) save("cubes_" + std::to_string(n) + ".bin", hashes, n);
     if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1) {
         if (results[n - 1] != hashes.size()) {
             std::printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
@@ -194,6 +195,7 @@ int main(int argc, char **argv) {
     if (argc > 2) threads = atoi(argv[2]);
 
     if (const char *p = getenv("USE_CACHE")) USE_CACHE = atoi(p);
+    if (const char *p = getenv("WRITE_CACHE")) WRITE_CACHE = atoi(p);
     gen(n, threads);
     return 0;
 }

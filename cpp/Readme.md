@@ -10,8 +10,11 @@
 ```
 
 ## environment variable:
-Cache can be disabled by setting USE_CACHE=0
+Cache reads can be disabled by setting USE_CACHE=0
+Cache writes ... WRITE_CACHE=0
 
 ```bash
 USE_CACHE=0 ./cubes N [NUM_THREADS]
+# and
+WRITE_CACHE=0 ./cubes N [NUM_THREADS]
 ```

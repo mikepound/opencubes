@@ -2,19 +2,24 @@
 #ifndef OPENCUBES_CACHE_HPP
 #define OPENCUBES_CACHE_HPP
 #include <fstream>
+#include <limits>
 #include <string>
 #include <unordered_set>
 
 #include "structs.hpp"
 
 Hashy load(std::string path) {
+    Hashy cubes;
     auto ifs = std::ifstream(path, std::ios::binary);
-    if (!ifs.is_open()) return {};
+    if (!ifs.is_open()) return cubes;
     uint8_t cubelen = 0;
-    uint64_t filelen = ifs.tellg();
-    ifs.seekg(0, std::ios::end);
-    filelen = (uint)ifs.tellg() - filelen;
-    ifs.seekg(0, std::ios::beg);
+    // read big filesize by reading file from:
+    // https://stackoverflow.com/questions/2409504/using-c-filestreams-fstream-how-can-you-determine-the-size-of-a-file
+    ifs.ignore(std::numeric_limits<std::streamsize>::max());
+    uint64_t filelen = ifs.gcount();
+    ifs.clear();  //  Since ignore will have set eof.
+    ifs.seekg(0, std::ios_base::beg);
+
     ifs.read((char *)&cubelen, 1);
     std::printf("loading cache file \"%s\" (%lu bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
 
@@ -23,10 +28,9 @@ Hashy load(std::string path) {
     if (numCubes * cubeSize + 1U != filelen) {
         std::printf("error reading file, size does not match\n\r");
         std::printf("  cubeSize = %u bytes, numCubes = %lu\n\r", cubeSize, numCubes);
-        return {};
+        return cubes;
     }
     std::printf("  num polycubes loading: %ld\n\r", numCubes);
-    Hashy cubes;
     cubes.init(cubelen);
     for (size_t i = 0; i < numCubes; ++i) {
         Cube next;

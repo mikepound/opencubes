@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod test;
 
-use std::{
-    rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use indicatif::ProgressStyle;
@@ -13,7 +13,7 @@ mod iterator;
 /// A polycube
 #[derive(Debug)]
 pub struct PolyCube {
-    alloc_count: Rc<AtomicUsize>,
+    alloc_count: Arc<AtomicUsize>,
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
@@ -153,7 +153,7 @@ impl PolyCube {
     /// using `alloc_count` to keep track of the amount of [`PolyCube`]s that
     /// are allocated.
     pub fn new_with_alloc_count(
-        alloc_count: Rc<AtomicUsize>,
+        alloc_count: Arc<AtomicUsize>,
         dim_1: usize,
         dim_2: usize,
         dim_3: usize,
@@ -187,7 +187,7 @@ impl PolyCube {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
         Self {
-            alloc_count: Rc::new(AtomicUsize::new(0)),
+            alloc_count: Arc::new(AtomicUsize::new(0)),
             dim_1,
             dim_2,
             dim_3,

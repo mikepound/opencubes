@@ -1,12 +1,14 @@
 use std::{
-    rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::Instant,
 };
 
 use polycubes::PolyCube;
 
-fn unique_expansions(alloc_tracker: Rc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
+fn unique_expansions(alloc_tracker: Arc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
     println!("Calculating unique polycubes for N = {n}");
 
     if n == 0 {
@@ -46,7 +48,7 @@ fn main() {
         std::process::exit(1);
     };
 
-    let alloc_tracker = Rc::new(AtomicUsize::new(0));
+    let alloc_tracker = Arc::new(AtomicUsize::new(0));
 
     let start = Instant::now();
 

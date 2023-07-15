@@ -9,4 +9,4 @@ edition = "2021"
 indicatif = { optional = true, version = "0.17.5" }
 
 [features]
-default = [ "indicatif" ]
+default = ["indicatif"]

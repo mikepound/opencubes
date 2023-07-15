@@ -1,17 +1,19 @@
 #[cfg(test)]
 mod test;
 
-use std::{
-    rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
+
+use parking_lot::RwLock;
 
 mod iterator;
 
 /// A polycube
 #[derive(Debug)]
 pub struct PolyCube {
-    alloc_count: Rc<AtomicUsize>,
+    alloc_count: Arc<AtomicUsize>,
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
@@ -132,7 +134,7 @@ impl PolyCube {
     }
 
     pub fn new_with_alloc_count(
-        alloc_count: Rc<AtomicUsize>,
+        alloc_count: Arc<AtomicUsize>,
         dim_1: usize,
         dim_2: usize,
         dim_3: usize,
@@ -154,15 +156,11 @@ impl PolyCube {
         me
     }
 
-    pub fn alloc_count(&self) -> Rc<AtomicUsize> {
-        self.alloc_count.clone()
-    }
-
     pub fn new(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
         Self {
-            alloc_count: Rc::new(AtomicUsize::new(0)),
+            alloc_count: Arc::new(AtomicUsize::new(0)),
             dim_1,
             dim_2,
             dim_3,
@@ -319,19 +317,29 @@ impl PolyCube {
     {
         use std::collections::HashSet;
 
-        let mut this_level = HashSet::new();
+        let this_level = RwLock::new(HashSet::new());
 
         for value in previous_level {
-            for expansion in value.expand().map(|v| v.crop()) {
-                let missing = !expansion.all_rotations().any(|v| this_level.contains(&v));
+            let iterator = value.expand();
+
+            #[cfg(feature = "rayon")]
+            use rayon::prelude::{ParallelBridge, ParallelIterator};
+
+            #[cfg(feature = "rayon")]
+            let iterator = iterator.par_bridge();
+
+            iterator.map(|v| v.crop()).for_each(|expansion| {
+                let missing = !expansion
+                    .all_rotations()
+                    .any(|v| this_level.read().contains(&v));
 
                 if missing {
-                    this_level.insert(expansion);
+                    this_level.write().insert(expansion);
                 }
-            }
+            });
         }
 
-        this_level.into_iter().collect()
+        this_level.into_inner().into_iter().collect()
     }
 
     pub fn is_cropped(&self) -> bool {

@@ -24,7 +24,15 @@ pub struct PolyCube {
 
 impl Clone for PolyCube {
     fn clone(&self) -> Self {
-        self.increase_alloc_count();
+        // If `filled` is empty, cloning the vector is unnecessary.
+        // We can avoid an allocation by just creating a `new` Vec instead.
+        let filled = if !self.filled.is_empty() {
+            self.increase_alloc_count();
+            self.filled.clone()
+        } else {
+            Vec::new()
+        };
+
         Self {
             alloc_count: self.alloc_count.clone(),
             dim_1: self.dim_1.clone(),
@@ -32,7 +40,7 @@ impl Clone for PolyCube {
             dim_3: self.dim_3.clone(),
             dim_2_scalar: self.dim_2_scalar.clone(),
             dim_3_scalar: self.dim_3_scalar.clone(),
-            filled: self.filled.clone(),
+            filled,
         }
     }
 }
@@ -50,6 +58,9 @@ impl PartialEq for PolyCube {
 
 impl std::hash::Hash for PolyCube {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // For hashing purposes we do not care about the allocation tracker,
+        // as that is only interesting metadata to look at and it does not
+        // describe the actual state of the PolyCube.
         self.dim_1.hash(state);
         self.dim_2.hash(state);
         self.dim_3.hash(state);
@@ -58,6 +69,8 @@ impl std::hash::Hash for PolyCube {
 }
 
 impl core::fmt::Display for PolyCube {
+    // Format the polycube in a somewhat more easy to digest
+    // format.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut xy = String::new();
 
@@ -88,6 +101,9 @@ impl core::fmt::Display for PolyCube {
     }
 }
 
+/// Creating a new polycube from a triple-nested vector
+/// is convenient if/when you're writing them out
+/// by hand.
 impl From<Vec<Vec<Vec<bool>>>> for PolyCube {
     fn from(value: Vec<Vec<Vec<bool>>>) -> Self {
         let dim_1 = value.len();
@@ -109,15 +125,14 @@ impl From<Vec<Vec<Vec<bool>>>> for PolyCube {
 }
 
 impl PolyCube {
+    /// Get the dimensions of this polycube
     pub fn dims(&self) -> (usize, usize, usize) {
         (self.dim_1, self.dim_2, self.dim_3)
     }
 
-    pub fn cube_iter(&self) -> impl Iterator<Item = &bool> + '_ {
-        self.filled.iter()
-    }
-
-    fn index(&self, dim_1: usize, dim_2: usize, dim_3: usize) -> Option<usize> {
+    /// Calculate the offset into `self.filled` using the provided offsets
+    /// within each dimension.
+    fn offset(&self, dim_1: usize, dim_2: usize, dim_3: usize) -> Option<usize> {
         if dim_1 < self.dim_1 && dim_2 < self.dim_2 && dim_3 < self.dim_3 {
             let d1 = dim_1;
             let d2 = dim_2 * self.dim_2_scalar;
@@ -129,10 +144,14 @@ impl PolyCube {
         }
     }
 
+    /// Inrease the allocation count
     fn increase_alloc_count(&self) {
         self.alloc_count.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)`, and
+    /// using `alloc_count` to keep track of the amount of [`PolyCube`]s that
+    /// are allocated.
     pub fn new_with_alloc_count(
         alloc_count: Rc<AtomicUsize>,
         dim_1: usize,
@@ -156,10 +175,14 @@ impl PolyCube {
         me
     }
 
-    pub fn alloc_count(&self) -> Rc<AtomicUsize> {
-        self.alloc_count.clone()
+    /// Get the amount of allocations that have been
+    /// performed by this [`PolyCube`]
+    pub fn alloc_count(&self) -> usize {
+        self.alloc_count.load(Ordering::Relaxed)
     }
 
+    /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)` and
+    /// a new allocation tracker.
     pub fn new(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
@@ -174,30 +197,32 @@ impl PolyCube {
         }
     }
 
+    /// Create a new [`PolyCube`] with dimensions `(side, side, side)`, and
+    /// a new allocation tracker.
     pub fn new_equal_sides(side: usize) -> Self {
         Self::new(side, side, side)
     }
 
-    pub fn size(&self) -> usize {
-        self.dim_1 * self.dim_2 * self.dim_3
-    }
-
+    /// Set the state of the box located at `(d1, d2, d3)` to `set`.
     pub fn set_to(&mut self, d1: usize, d2: usize, d3: usize, set: bool) -> Result<(), ()> {
-        let idx = self.index(d1, d2, d3).ok_or(())?;
+        let idx = self.offset(d1, d2, d3).ok_or(())?;
         self.filled[idx] = set;
         Ok(())
     }
 
+    /// Set the box located at `(d1, d2, d3)` to be filled.
     pub fn set(&mut self, d1: usize, d2: usize, d3: usize) -> Result<(), ()> {
         self.set_to(d1, d2, d3, true)
     }
 
+    /// Returns whether the box located at `(d1, d2, d3)` is filled.
     pub fn is_set(&self, d1: usize, d2: usize, d3: usize) -> bool {
-        self.index(d1, d2, d3)
+        self.offset(d1, d2, d3)
             .map(|v| self.filled[v])
             .unwrap_or(false)
     }
 
+    /// Create a new [`PolyCube`], representing `self` rotated `k` times in the plane indicated by `a1` and `a2`.
     pub fn rot90(self, k: usize, (a1, a2): (usize, usize)) -> PolyCube {
         assert!(a1 <= 2, "a1 must be <= 2");
         assert!(a2 <= 2, "a2 must be <= 2");
@@ -225,6 +250,10 @@ impl PolyCube {
         }
     }
 
+    /// Create a new [`PolyCube`], representing `self` transposed according to `a1`, `a2`, and `a3`.
+    ///
+    /// The axes of the returned [`PolyCube`] will be those of `self`, rearranged according to the
+    /// provided axes.
     pub fn transpose(&self, a1: usize, a2: usize, a3: usize) -> PolyCube {
         assert!(a1 != a2);
         assert!(a1 != a3);
@@ -248,8 +277,8 @@ impl PolyCube {
                     let original = [d1, d2, d3];
                     let [t1, t2, t3] = [original[a1], original[a2], original[a3]];
 
-                    let orig_idx = self.index(d1, d2, d3).unwrap();
-                    let transposed_idx = new_cube.index(t1, t2, t3).unwrap();
+                    let orig_idx = self.offset(d1, d2, d3).unwrap();
+                    let transposed_idx = new_cube.offset(t1, t2, t3).unwrap();
 
                     new_cube.filled[transposed_idx] = self.filled[orig_idx];
                 }
@@ -259,6 +288,7 @@ impl PolyCube {
         new_cube
     }
 
+    /// Create a new [`PolyCube`], representing `self` flipped along `axis`.
     pub fn flip(&self, axis: usize) -> PolyCube {
         assert!(axis <= 2, "Axis must be <= 2");
 
@@ -274,7 +304,7 @@ impl PolyCube {
                 for d1 in 0..self.dim_1 {
                     for d2 in 0..self.dim_2 {
                         for d3 in 0..self.dim_3 {
-                            let idx_1 = self.index(d1, d2, d3).unwrap();
+                            let idx_1 = self.offset(d1, d2, d3).unwrap();
                             let idx_2 = $flipped_idx(d1, d2, d3).unwrap();
 
                             new_cube.filled[idx_2] = self.filled[idx_1];
@@ -285,16 +315,18 @@ impl PolyCube {
         }
 
         match axis {
-            0 => flip!(|d1, d2, d3| self.index(self.dim_1 - d1 - 1, d2, d3)),
-            1 => flip!(|d1, d2, d3| self.index(d1, self.dim_2 - d2 - 1, d3)),
-            2 => flip!(|d1, d2, d3| self.index(d1, d2, self.dim_3 - d3 - 1)),
+            0 => flip!(|d1, d2, d3| self.offset(self.dim_1 - d1 - 1, d2, d3)),
+            1 => flip!(|d1, d2, d3| self.offset(d1, self.dim_2 - d2 - 1, d3)),
+            2 => flip!(|d1, d2, d3| self.offset(d1, d2, self.dim_3 - d3 - 1)),
             _ => unreachable!(),
         }
 
         new_cube
     }
 
-    fn pad_one(&self) -> PolyCube {
+    /// Create a new [`PolyCube`] that has an extra box-space on all sides
+    /// of the polycube.
+    pub fn pad_one(&self) -> PolyCube {
         let mut cube_next = PolyCube::new_with_alloc_count(
             self.alloc_count.clone(),
             self.dim_1 + 2,
@@ -315,6 +347,10 @@ impl PolyCube {
         cube_next
     }
 
+    /// Obtain a list of [`PolyCube`]s representing all unique expansions of the
+    /// items in `from_set`.
+    ///
+    /// If the feature `indicatif` is enabled, this also prints a progress bar.
     pub fn unique_expansions<'a, I>(from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
@@ -360,6 +396,7 @@ impl PolyCube {
         this_level.into_iter().collect()
     }
 
+    /// Check whether this cube is already cropped.
     pub fn is_cropped(&self) -> bool {
         macro_rules! direction {
             ($d1:expr, $d2:expr, $d3:expr, $pred:expr) => {{
@@ -398,6 +435,9 @@ impl PolyCube {
         return true;
     }
 
+    /// Create a new [`PolyCube`] representing `self` but cropped.
+    ///
+    /// Cropping means that there are no planes without any present boxes.
     pub fn crop(&self) -> PolyCube {
         macro_rules! direction {
             ($d1:expr, $d2:expr, $d3:expr, $pred:expr) => {{
@@ -428,8 +468,12 @@ impl PolyCube {
         let d1_first = |d1, d2, d3| self.is_set(d1, d2, d3);
         let d1_left = direction!(0..self.dim_1, self.dim_2, self.dim_3, d1_first);
 
+        // If there are `dim_1` planes to be removed, we have to remove them all,
+        // which means that there are no boxes present in this polycube, at all.
         if d1_left == self.dim_1 {
             return PolyCube {
+                // NOTE: this doesn't increase allocation count, since
+                // Vec::new() does not allocate for size 0.
                 alloc_count: self.alloc_count.clone(),
                 dim_1: 0,
                 dim_2: 0,

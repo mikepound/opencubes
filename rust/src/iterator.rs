@@ -21,6 +21,7 @@ impl Iterator for PlaneIterator {
 }
 
 impl PolyCube {
+    /// Obtain an iterator yielding all rotations of `self` in `plane`.
     pub fn rotations_in_plane(self, plane: (usize, usize)) -> impl Iterator<Item = PolyCube> {
         PlaneIterator {
             count: 0,
@@ -29,6 +30,7 @@ impl PolyCube {
         }
     }
 
+    /// Obtain an iterator yielding all possible rotations of `self`
     pub fn all_rotations(&self) -> impl Iterator<Item = PolyCube> + '_ {
         const _0_1: (usize, usize) = (0, 1);
         const _1_2: (usize, usize) = (1, 2);

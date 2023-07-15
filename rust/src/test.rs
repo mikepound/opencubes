@@ -248,8 +248,9 @@ fn crop() {
     assert_eq!(input, expected);
 }
 
+/// The test cube should not have any non-unique rotations.
 #[test]
-pub fn specifics() {
+pub fn all_are_unique() {
     let cube = test_cube();
 
     let all_rotations: HashSet<_> = cube.all_rotations().collect();

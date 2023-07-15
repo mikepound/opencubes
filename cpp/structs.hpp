@@ -54,7 +54,7 @@ struct Cube {
 
     bool operator<(const Cube &b) const {
         if (size() != b.size()) return size() < b.size();
-        for (int i = 0; i < size(); ++i) {
+        for (size_t i = 0; i < size(); ++i) {
             if (sparse[i].joined < b.sparse[i].joined)
                 return true;
             else if (sparse[i].joined > b.sparse[i].joined)
@@ -113,14 +113,24 @@ struct Hashy {
         // create all subhashy which will be needed for N
         for (int x = 0; x < n; ++x)
             for (int y = x; y < (n - x); ++y)
-                for (int z = y; z < (n - x - y); ++z) byshape[XYZ{x, y, z}].size();
-        std::printf("%ld maps by shape\n\r", byshape.size());
+                for (int z = y; z < (n - x - y); ++z) {
+                    if ((x + 1) * (y + 1) * (z + 1) < n)  // not enough space for n cubes
+                        continue;
+                    byshape[XYZ{x, y, z}].size();
+                }
+        std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
 
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
+#ifndef NDEBUG
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
+        if (byshape.find(shape) == byshape.end()) {
+            printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x, shape.y, shape.z);
+            exit(-1);
+        }
+#endif
         auto &set = byshape[shape];
         if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
@@ -128,7 +138,16 @@ struct Hashy {
 
     auto size() {
         size_t sum = 0;
-        for (auto &set : byshape) sum += set.second.size();
+#ifdef DBG
+        std::printf("%ld maps by shape\n\r", byshape.size());
+#endif
+        for (auto &set : byshape) {
+            auto part = set.second.size();
+#ifdef DBG
+            std::printf("bucket [%2d %2d %2d]: %ld\n", set.first.x, set.first.y, set.first.z, part);
+#endif
+            sum += part;
+        }
         return sum;
     }
 };

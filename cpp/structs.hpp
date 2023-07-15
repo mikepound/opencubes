@@ -1,10 +1,12 @@
 #pragma once
+#ifndef OPENCUBES_STRUCTS_HPP
+#define OPENCUBES_STRUCTS_HPP
+#include <cstdio>
 #include <vector>
 #include <unordered_set>
 #include <mutex>
 #include <map>
 
-using namespace std;
 // #define DBG 1
 struct XYZ
 {
@@ -22,15 +24,68 @@ struct XYZ
     bool operator<(const XYZ &b) const { return joined < b.joined; }
 };
 
+struct HashXYZ {
+    size_t operator()(const XYZ & p) const
+    {
+        return p.joined;
+    }
+};
+
+using XYZSet = std::unordered_set<XYZ, HashXYZ,std::equal_to<XYZ>>;
+
 struct Cube
 {
-    vector<XYZ> sparse;
-    bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
+    std::vector<XYZ> sparse;
+    /**
+     * Define subset of vector operations for Cube
+     * This simplifies the code everywhere else.
+     */
+    std::vector<XYZ>::iterator begin()
+    {
+        return sparse.begin();
+    }
+
+    std::vector<XYZ>::iterator end()
+    {
+        return sparse.end();
+    }
+
+    std::vector<XYZ>::const_iterator begin() const
+    {
+        return sparse.begin();
+    }
+
+    std::vector<XYZ>::const_iterator end() const
+    {
+        return sparse.end();
+    }
+
+    size_t size() const
+    {
+        return sparse.size();
+    }
+
+    void reserve(size_t N)
+    {
+        sparse.reserve(N);
+    }
+
+    template<typename T>
+    T & emplace_back(T && p)
+    {
+        return sparse.emplace_back(std::forward<T>(p));
+    }
+
+    bool operator==(const Cube &rhs) const
+    {
+        return this->sparse == rhs.sparse;
+    }
+
     bool operator<(const Cube &b) const
     {
-        if (sparse.size() != b.sparse.size())
-            return sparse.size() < b.sparse.size();
-        for (int i = 0; i < sparse.size(); ++i)
+        if (size() != b.size())
+            return size() < b.size();
+        for (int i = 0; i < size(); ++i)
         {
             if (sparse[i].joined < b.sparse[i].joined)
                 return true;
@@ -43,49 +98,42 @@ struct Cube
     void print() const
     {
         for (auto &p : sparse)
-            printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
+            std::printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
     }
 };
 
-namespace std
+struct HashCube
 {
-    template <>
-    struct hash<XYZ>
+    size_t operator()(const Cube &cube) const
     {
-        size_t operator()(const XYZ &x) const { return x.joined; }
-    };
-
-    template <>
-    struct hash<Cube>
-    {
-        size_t operator()(const Cube &cube) const
+        // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
+        std::size_t seed = cube.size();
+        for (auto &p : cube)
         {
-            // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
-            std::size_t seed = cube.sparse.size();
-            for (auto &p : cube.sparse)
-            {
-                auto x = std::hash<XYZ>()(p);
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = (x >> 16) ^ x;
-                seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
-            return seed;
+            auto x = HashXYZ()(p);
+            // x = ((x >> 16) ^ x) * 0x45d9f3b;
+            // x = ((x >> 16) ^ x) * 0x45d9f3b;
+            // x = (x >> 16) ^ x;
+            seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
-    };
-} // namespace std
+        return seed;
+    }
+};
+
+using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
 struct Hashy
 {
     struct Subhashy
     {
-        unordered_set<Cube> set;
+        CubeSet set;
 
-        mutex set_mutex;
-        void insert(const Cube &c)
+        std::mutex set_mutex;
+        template<typename CubeT>
+        void insert(CubeT && c)
         {
-            lock_guard<mutex> lock(set_mutex);
-            set.insert(c);
+            std::lock_guard<std::mutex> lock(set_mutex);
+            set.emplace(std::forward<CubeT>(c));
         }
         auto size()
         {
@@ -93,7 +141,7 @@ struct Hashy
         }
     };
 
-    map<XYZ, Subhashy> byshape;
+    std::map<XYZ, Subhashy> byshape;
     void init(int n)
     {
         // create all subhashy which will be needed for N
@@ -101,14 +149,15 @@ struct Hashy
             for (int y = x; y < (n - x); ++y)
                 for (int z = y; z < (n - x - y); ++z)
                     byshape[XYZ{x, y, z}].size();
-        printf("%ld maps by shape\n\r", byshape.size());
+        std::printf("%ld maps by shape\n\r", byshape.size());
     }
 
-    void insert(const Cube &c, XYZ shape)
+    template<typename CubeT>
+    void insert(CubeT && c, XYZ shape)
     {
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
-        byshape[shape].insert(c);
+        byshape[shape].insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
     }
 
@@ -120,3 +169,4 @@ struct Hashy
         return sum;
     }
 };
+#endif

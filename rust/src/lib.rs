@@ -6,6 +6,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+use indicatif::ProgressStyle;
+
 mod iterator;
 
 /// A polycube
@@ -315,9 +317,27 @@ impl PolyCube {
 
     pub fn unique_expansions<'a, I>(from_set: I) -> Vec<PolyCube>
     where
-        I: Iterator<Item = &'a PolyCube>,
+        I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
         use std::collections::HashSet;
+
+        #[cfg(feature = "indicatif")]
+        let bar = {
+            let bar = indicatif::ProgressBar::new(from_set.len() as u64);
+
+            let pos_width = format!("{}", from_set.len()).len();
+
+            let template = format!(
+                "{{spinner:.green}} {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
+            );
+
+            bar.set_style(
+                ProgressStyle::with_template(&template)
+                    .unwrap()
+                    .progress_chars("#>-"),
+            );
+            bar
+        };
 
         let mut this_level = HashSet::new();
 
@@ -329,7 +349,13 @@ impl PolyCube {
                     this_level.insert(expansion);
                 }
             }
+
+            #[cfg(feature = "indicatif")]
+            bar.inc(1);
         }
+
+        #[cfg(feature = "indicatif")]
+        bar.finish();
 
         this_level.into_iter().collect()
     }

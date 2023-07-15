@@ -7,6 +7,8 @@ use std::{
 use polycubes::PolyCube;
 
 fn unique_expansions(alloc_tracker: Rc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
+    println!("Calculating unique polycubes for N = {n}");
+
     if n == 0 {
         return Vec::new();
     }

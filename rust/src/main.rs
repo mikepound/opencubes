@@ -1,6 +1,7 @@
 use std::{
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Instant,
 };
 
 use polycubes::PolyCube;
@@ -47,11 +48,16 @@ fn main() {
     };
 
     let alloc_tracker = Rc::new(AtomicUsize::new(0));
-    let l4 = unique_expansions(alloc_tracker.clone(), count);
 
-    println!(
-        "Unique polycubes found: {}, Total allocations: {}",
-        l4.len(),
-        alloc_tracker.load(Ordering::Relaxed)
-    );
+    let start = Instant::now();
+
+    let cubes = unique_expansions(alloc_tracker.clone(), count);
+
+    let duration = start.elapsed();
+
+    let cubes = cubes.len();
+    let allocations = alloc_tracker.load(Ordering::Relaxed);
+
+    println!("Unique polycubes found: {cubes}, Total allocations: {allocations}",);
+    println!("Duration: {} ms", duration.as_millis());
 }

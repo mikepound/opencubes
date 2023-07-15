@@ -24,6 +24,15 @@ struct XYZ
     bool operator<(const XYZ &b) const { return joined < b.joined; }
 };
 
+struct HashXYZ {
+    size_t operator()(const XYZ & p) const
+    {
+        return p.joined;
+    }
+};
+
+using XYZSet = std::unordered_set<XYZ, HashXYZ,std::equal_to<XYZ>>;
+
 struct Cube
 {
     std::vector<XYZ> sparse;
@@ -49,39 +58,31 @@ struct Cube
     }
 };
 
-namespace std
+struct HashCube
 {
-    template <>
-    struct hash<XYZ>
+    size_t operator()(const Cube &cube) const
     {
-        size_t operator()(const XYZ &x) const { return x.joined; }
-    };
-
-    template <>
-    struct hash<Cube>
-    {
-        size_t operator()(const Cube &cube) const
+        // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
+        std::size_t seed = cube.sparse.size();
+        for (auto &p : cube.sparse)
         {
-            // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
-            std::size_t seed = cube.sparse.size();
-            for (auto &p : cube.sparse)
-            {
-                auto x = std::hash<XYZ>()(p);
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = ((x >> 16) ^ x) * 0x45d9f3b;
-                // x = (x >> 16) ^ x;
-                seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
-            return seed;
+            auto x = HashXYZ()(p);
+            // x = ((x >> 16) ^ x) * 0x45d9f3b;
+            // x = ((x >> 16) ^ x) * 0x45d9f3b;
+            // x = (x >> 16) ^ x;
+            seed ^= x + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
-    };
-} // namespace std
+        return seed;
+    }
+};
+
+using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 
 struct Hashy
 {
     struct Subhashy
     {
-        std::unordered_set<Cube> set;
+        CubeSet set;
 
         std::mutex set_mutex;
         void insert(const Cube &c)

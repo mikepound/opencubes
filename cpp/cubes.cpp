@@ -14,7 +14,7 @@ bool USE_CACHE = 1;
 
 void expand(const Cube &c, Hashy &hashes)
 {
-    std::unordered_set<XYZ> candidates;
+    XYZSet candidates;
     for (const auto &p : c.sparse)
     {
         candidates.insert(XYZ{p.x + 1, p.y, p.z});

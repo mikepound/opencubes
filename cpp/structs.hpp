@@ -129,10 +129,11 @@ struct Hashy
         CubeSet set;
 
         std::mutex set_mutex;
-        void insert(const Cube &c)
+        template<typename CubeT>
+        void insert(CubeT && c)
         {
             std::lock_guard<std::mutex> lock(set_mutex);
-            set.insert(c);
+            set.emplace(std::forward<CubeT>(c));
         }
         auto size()
         {
@@ -151,11 +152,12 @@ struct Hashy
         std::printf("%ld maps by shape\n\r", byshape.size());
     }
 
-    void insert(const Cube &c, XYZ shape)
+    template<typename CubeT>
+    void insert(CubeT && c, XYZ shape)
     {
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
-        byshape[shape].insert(c);
+        byshape[shape].insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
     }
 

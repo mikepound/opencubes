@@ -15,14 +15,15 @@ bool USE_CACHE = 1;
 void expand(const Cube &c, Hashy &hashes)
 {
     XYZSet candidates;
+    candidates.reserve(c.size() * 6);
     for (const auto &p : c)
     {
-        candidates.insert(XYZ{p.x + 1, p.y, p.z});
-        candidates.insert(XYZ{p.x - 1, p.y, p.z});
-        candidates.insert(XYZ{p.x, p.y + 1, p.z});
-        candidates.insert(XYZ{p.x, p.y - 1, p.z});
-        candidates.insert(XYZ{p.x, p.y, p.z + 1});
-        candidates.insert(XYZ{p.x, p.y, p.z - 1});
+        candidates.emplace(XYZ{p.x + 1, p.y, p.z});
+        candidates.emplace(XYZ{p.x - 1, p.y, p.z});
+        candidates.emplace(XYZ{p.x, p.y + 1, p.z});
+        candidates.emplace(XYZ{p.x, p.y - 1, p.z});
+        candidates.emplace(XYZ{p.x, p.y, p.z + 1});
+        candidates.emplace(XYZ{p.x, p.y, p.z - 1});
     }
     for (const auto &p : c)
     {
@@ -40,6 +41,7 @@ void expand(const Cube &c, Hashy &hashes)
         int ay = (p.y < 0) ? 1 : 0;
         int az = (p.z < 0) ? 1 : 0;
         Cube newCube;
+        newCube.reserve(c.size() + 1);
         newCube.emplace_back(XYZ{p.x + ax, p.y + ay, p.z + az});
         std::array<int, 3> shape{p.x + ax, p.y + ay, p.z + az};
         for (const auto &np : c)
@@ -64,24 +66,24 @@ void expand(const Cube &c, Hashy &hashes)
         bool none_set = true;
         for (int i = 0; i < 24; ++i)
         {
-            auto res = Rotations::rotate(i, shape, newCube.sparse);
+            auto res = Rotations::rotate(i, shape, newCube);
             if (res.second.size() == 0)
                 continue; // rotation generated violating shape
-            Cube rotatedCube{res.second};
+            Cube rotatedCube{std::move(res.second)};
             std::sort(rotatedCube.begin(), rotatedCube.end());
 
             if (none_set || lowestHashCube < rotatedCube)
             {
                 none_set = false;
                 // printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
-                lowestHashCube = rotatedCube;
+                lowestHashCube = std::move(rotatedCube);
                 lowestShape = res.first;
             }
         }
-        hashes.insert(lowestHashCube, lowestShape);
+        hashes.insert(std::move(lowestHashCube), lowestShape);
 #ifdef DBG
         std::printf("=====\n\r");
-        lowestHashCube.print();
+        // lowestHashCube.print();
         std::printf("inserted! (num %2lu)\n\n\r", hashes.size());
 #endif
     }
@@ -123,13 +125,13 @@ Hashy gen(int n, int threads = 1)
         return {};
     else if (n == 1)
     {
-        hashes.insert({{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
+        hashes.insert(Cube{{XYZ{0, 0, 0}}}, XYZ{0, 0, 0});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
     else if (n == 2)
     {
-        hashes.insert({{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
+        hashes.insert(Cube{{XYZ{0, 0, 0}, XYZ{0, 0, 1}}}, XYZ{0, 0, 1});
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }
@@ -186,12 +188,13 @@ Hashy gen(int n, int threads = 1)
         }
         std::printf("starting %d threads\n\r", threads);
         std::vector<std::thread> ts;
+        ts.reserve(threads);
         for (int i = 0; i < threads; ++i)
         {
             auto start = baseCubes.size() * i / threads;
             auto end = baseCubes.size() * (i + 1) / threads;
 
-            ts.push_back(std::thread(expandPart, std::ref(baseCubes), std::ref(hashes), start, end));
+            ts.emplace_back(expandPart, std::ref(baseCubes), std::ref(hashes), start, end);
         }
         for (int i = 0; i < threads; ++i)
         {

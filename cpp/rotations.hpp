@@ -35,7 +35,7 @@ struct Rotations
         {2, 1, 0, 1, -1, 1},
         {2, 1, 0, 1, 1, -1},
     };
-    static std::pair<XYZ, std::vector<XYZ>> rotate(int i, std::array<int, 3> shape, const std::vector<XYZ> &orig)
+    static std::pair<XYZ, std::vector<XYZ>> rotate(int i, std::array<int, 3> shape, const Cube &orig)
     {
         const auto L = LUT[i];
         XYZ out_shape{shape[L[0]], shape[L[1]], shape[L[2]]};
@@ -60,7 +60,7 @@ struct Rotations
                 next.z = shape[L[2]] - o.data[L[2]];
             else
                 next.z = o.data[L[2]];
-            res.push_back(next);
+            res.emplace_back(next);
         }
         return {out_shape, res};
     }

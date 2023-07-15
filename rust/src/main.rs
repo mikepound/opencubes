@@ -1,14 +1,11 @@
 use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Instant,
+    rc::Rc,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use polycubes::PolyCube;
 
-fn unique_expansions(alloc_tracker: Arc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
+fn unique_expansions(alloc_tracker: Rc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
     if n == 0 {
         return Vec::new();
     }
@@ -49,17 +46,12 @@ fn main() {
         std::process::exit(1);
     };
 
-    let alloc_tracker = Arc::new(AtomicUsize::new(0));
+    let alloc_tracker = Rc::new(AtomicUsize::new(0));
+    let l4 = unique_expansions(alloc_tracker.clone(), count);
 
-    let start = Instant::now();
-
-    let cubes = unique_expansions(alloc_tracker.clone(), count);
-
-    let duration = start.elapsed();
-
-    let cubes = cubes.len();
-    let allocations = alloc_tracker.load(Ordering::Relaxed);
-
-    println!("Unique polycubes found: {cubes}, Total allocations: {allocations}",);
-    println!("Duration: {} ms", duration.as_millis());
+    println!(
+        "Unique polycubes found: {}, Total allocations: {}",
+        l4.len(),
+        alloc_tracker.load(Ordering::Relaxed)
+    );
 }

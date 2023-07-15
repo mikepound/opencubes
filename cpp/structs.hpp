@@ -3,7 +3,7 @@
 #define OPENCUBES_STRUCTS_HPP
 #include <cstdio>
 #include <map>
-#include <mutex>
+#include <shared_mutex>
 #include <unordered_set>
 #include <vector>
 
@@ -88,14 +88,24 @@ using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 struct Hashy {
     struct Subhashy {
         CubeSet set;
+        std::shared_mutex set_mutex;
 
-        std::mutex set_mutex;
         template <typename CubeT>
         void insert(CubeT &&c) {
-            std::lock_guard<std::mutex> lock(set_mutex);
+            std::lock_guard lock(set_mutex);
             set.emplace(std::forward<CubeT>(c));
         }
-        auto size() { return set.size(); }
+
+        template <typename CubeT>
+        bool contains(CubeT &&c) {
+            std::shared_lock lock(set_mutex);
+            return set.count(std::forward<CubeT>(c));
+        }
+
+        auto size() {
+            std::shared_lock lock(set_mutex);
+            return set.size();
+        }
     };
 
     std::map<XYZ, Subhashy> byshape;
@@ -111,13 +121,14 @@ struct Hashy {
     void insert(CubeT &&c, XYZ shape) {
         // printf("insert into shape %d %d %d\n", shape.x, shape.y, shape.z);
         // c.print();
-        byshape[shape].insert(std::forward<CubeT>(c));
+        auto &set = byshape[shape];
+        if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
         // printf("new size %ld\n\r", byshape[shape].size());
     }
 
     auto size() {
         size_t sum = 0;
-        for (const auto &set : byshape) sum += set.second.set.size();
+        for (auto &set : byshape) sum += set.second.size();
         return sum;
     }
 };

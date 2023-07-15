@@ -1,16 +1,15 @@
 #pragma once
 #ifndef OPENCUBES_CACHE_HPP
 #define OPENCUBES_CACHE_HPP
-#include <unordered_set>
 #include <fstream>
 #include <string>
+#include <unordered_set>
+
 #include "structs.hpp"
 
-Hashy load(std::string path)
-{
+Hashy load(std::string path) {
     auto ifs = std::ifstream(path, std::ios::binary);
-    if (!ifs.is_open())
-        return {};
+    if (!ifs.is_open()) return {};
     uint8_t cubelen = 0;
     uint filelen = ifs.tellg();
     ifs.seekg(0, std::ios::end);
@@ -21,28 +20,22 @@ Hashy load(std::string path)
 
     auto cubeSize = 4 * (int)cubelen;
     auto numCubes = (filelen - 1) / cubeSize;
-    if (numCubes * cubeSize + 1 != filelen)
-    {
+    if (numCubes * cubeSize + 1 != filelen) {
         printf("error reading file, size does not match");
         return {};
     }
     printf("  num polycubes loading: %d\n\r", numCubes);
     Hashy cubes;
     cubes.init(cubelen);
-    for (int i = 0; i < numCubes; ++i)
-    {
+    for (int i = 0; i < numCubes; ++i) {
         Cube next;
         next.sparse.resize(cubelen);
         XYZ shape;
-        for (int k = 0; k < cubelen; ++k)
-        {
+        for (int k = 0; k < cubelen; ++k) {
             ifs.read((char *)&next.sparse[k].joined, 4);
-            if (next.sparse[k].x > shape.x)
-                shape.x = next.sparse[k].x;
-            if (next.sparse[k].y > shape.y)
-                shape.y = next.sparse[k].y;
-            if (next.sparse[k].z > shape.z)
-                shape.z = next.sparse[k].z;
+            if (next.sparse[k].x > shape.x) shape.x = next.sparse[k].x;
+            if (next.sparse[k].y > shape.y) shape.y = next.sparse[k].y;
+            if (next.sparse[k].z > shape.z) shape.z = next.sparse[k].z;
         }
         cubes.insert(next, shape);
     }
@@ -50,17 +43,13 @@ Hashy load(std::string path)
     return cubes;
 }
 
-void save(std::string path, Hashy &cubes, uint8_t n)
-{
-    if (cubes.size() == 0)
-        return;
+void save(std::string path, Hashy &cubes, uint8_t n) {
+    if (cubes.size() == 0) return;
     std::ofstream ofs(path, std::ios::binary);
     ofs << n;
     for (const auto &s : cubes.byshape)
-        for (const auto &c : s.second.set)
-        {
-            for (const auto &p : c)
-            {
+        for (const auto &c : s.second.set) {
+            for (const auto &p : c) {
                 ofs.write((const char *)&p.joined, sizeof(p.joined));
             }
         }

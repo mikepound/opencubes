@@ -36,7 +36,51 @@ using XYZSet = std::unordered_set<XYZ, HashXYZ,std::equal_to<XYZ>>;
 struct Cube
 {
     std::vector<XYZ> sparse;
-    bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
+    /**
+     * Define subset of vector operations for Cube
+     * This simplifies the code everywhere else.
+     */
+    std::vector<XYZ>::iterator begin()
+    {
+        return sparse.begin();
+    }
+
+    std::vector<XYZ>::iterator end()
+    {
+        return sparse.end();
+    }
+
+    std::vector<XYZ>::const_iterator begin() const
+    {
+        return sparse.begin();
+    }
+
+    std::vector<XYZ>::const_iterator end() const
+    {
+        return sparse.end();
+    }
+
+    size_t size() const
+    {
+        return sparse.size();
+    }
+
+    void reserve(size_t N)
+    {
+        sparse.reserve(N);
+    }
+
+    template<typename T>
+    T & emplace_back(T && p)
+    {
+        return sparse.emplace_back(std::forward<T>(p));
+    }
+
+    bool operator==(const Cube &rhs) const
+    {
+        return this->sparse == rhs.sparse;
+    }
+
     bool operator<(const Cube &b) const
     {
         if (sparse.size() != b.sparse.size())
@@ -54,7 +98,7 @@ struct Cube
     void print() const
     {
         for (auto &p : sparse)
-            printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
+            std::printf("  (%2d %2d %2d)\n\r", p.x, p.y, p.z);
     }
 };
 

@@ -351,10 +351,11 @@ impl PolyCube {
 
         let bar = ProgressBar::new(len as u64);
 
-        let pos_width = format!("{}", len).len();
+        let pos_width = format!("{len}").len();
 
-        let template =
-            format!("{{spinner:.green}} {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+        let template = format!(
+            "[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
+        );
 
         bar.set_style(
             ProgressStyle::with_template(&template)
@@ -368,7 +369,7 @@ impl PolyCube {
     /// items in `from_set`.
     ///
     /// If the feature `indicatif` is enabled, this also prints a progress bar.
-    pub fn unique_expansions<'a, I>(from_set: I) -> Vec<PolyCube>
+    pub fn unique_expansions<'a, I>(_n: usize, from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
@@ -379,7 +380,9 @@ impl PolyCube {
 
         let mut this_level = HashSet::new();
 
+        let mut iter = 0;
         for value in from_set {
+            iter += 1;
             for expansion in value.expand().map(|v| v.crop()) {
                 let missing = !expansion.all_rotations().any(|v| this_level.contains(&v));
 
@@ -389,11 +392,30 @@ impl PolyCube {
             }
 
             #[cfg(feature = "indicatif")]
-            bar.inc(1);
+            {
+                bar.inc(1);
+
+                // Try to avoid doing this too often
+                if iter % (this_level.len() / 100).max(100) == 0 {
+                    bar.set_message(format!(
+                        "Unique polycubes for N = {} so far: {}",
+                        _n,
+                        this_level.len()
+                    ));
+                }
+            }
         }
 
         #[cfg(feature = "indicatif")]
-        bar.finish();
+        {
+            bar.set_message(format!(
+                "Unique polycubes for N = {}: {}",
+                _n,
+                this_level.len(),
+            ));
+            bar.tick();
+            bar.finish();
+        }
 
         this_level.into_iter().collect()
     }

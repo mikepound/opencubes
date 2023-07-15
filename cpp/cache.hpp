@@ -11,20 +11,21 @@ Hashy load(std::string path) {
     auto ifs = std::ifstream(path, std::ios::binary);
     if (!ifs.is_open()) return {};
     uint8_t cubelen = 0;
-    uint filelen = ifs.tellg();
+    uint64_t filelen = ifs.tellg();
     ifs.seekg(0, std::ios::end);
     filelen = (uint)ifs.tellg() - filelen;
     ifs.seekg(0, std::ios::beg);
     ifs.read((char *)&cubelen, 1);
-    std::printf("loading cache file \"%s\" (%u bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
+    std::printf("loading cache file \"%s\" (%lu bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
 
-    auto cubeSize = 4 * (int)cubelen;
-    auto numCubes = (filelen - 1) / cubeSize;
-    if (numCubes * cubeSize + 1 != filelen) {
-        printf("error reading file, size does not match");
+    auto cubeSize = 4 * (uint)cubelen;
+    auto numCubes = (filelen - 1U) / cubeSize;
+    if (numCubes * cubeSize + 1U != filelen) {
+        std::printf("error reading file, size does not match\n\r");
+        std::printf("  cubeSize = %u bytes, numCubes = %lu\n\r", cubeSize, numCubes);
         return {};
     }
-    printf("  num polycubes loading: %d\n\r", numCubes);
+    std::printf("  num polycubes loading: %ld\n\r", numCubes);
     Hashy cubes;
     cubes.init(cubelen);
     for (size_t i = 0; i < numCubes; ++i) {
@@ -43,7 +44,7 @@ Hashy load(std::string path) {
         }
         cubes.insert(next, shape);
     }
-    printf("  loaded %lu cubes\n\r", cubes.size());
+    std::printf("  loaded %lu cubes\n\r", cubes.size());
     return cubes;
 }
 
@@ -58,6 +59,7 @@ void save(std::string path, Hashy &cubes, uint8_t n) {
                 ofs.write((const char *)&tmp, sizeof(tmp));
             }
         }
+    std::printf("saved %s\n\r", path.c_str());
 }
 
 #endif

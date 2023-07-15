@@ -29,12 +29,11 @@ impl PolyCube {
         }
     }
 
-    pub fn all_rots_with(
-        &self,
-        _0_1: (usize, usize),
-        _1_2: (usize, usize),
-        _0_2: (usize, usize),
-    ) -> impl Iterator<Item = PolyCube> + '_ {
+    pub fn all_rotations(&self) -> impl Iterator<Item = PolyCube> + '_ {
+        const _0_1: (usize, usize) = (0, 1);
+        const _1_2: (usize, usize) = (1, 2);
+        const _0_2: (usize, usize) = (0, 2);
+
         let rots_in_native_plane = self.clone().rotations_in_plane(_1_2);
 
         #[rustfmt::skip]
@@ -53,10 +52,6 @@ impl PolyCube {
             });
 
         rots_in_native_plane.chain(all_others)
-    }
-
-    pub fn all_rotations(&self) -> impl Iterator<Item = PolyCube> + '_ {
-        self.all_rots_with((0, 1), (1, 2), (0, 2))
     }
 }
 

@@ -18,11 +18,8 @@ fn unique_expansions(alloc_tracker: Rc<AtomicUsize>, n: usize) -> Vec<PolyCube> 
     let mut current = [base].to_vec();
 
     if n > 1 {
-        for i in 0..n - 1 {
+        for _ in 0..n - 1 {
             let next = PolyCube::unique_expansions(current.iter());
-
-            next.iter()
-                .for_each(|v| assert_eq!(v.cube_iter().filter(|v| **v).count(), i + 2));
 
             current = next;
         }

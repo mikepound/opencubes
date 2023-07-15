@@ -313,7 +313,7 @@ impl PolyCube {
         cube_next
     }
 
-    pub fn unique_expansions<'a, I>(previous_level: I) -> Vec<PolyCube>
+    pub fn unique_expansions<'a, I>(from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube>,
     {
@@ -321,7 +321,7 @@ impl PolyCube {
 
         let mut this_level = HashSet::new();
 
-        for value in previous_level {
+        for value in from_set {
             for expansion in value.expand().map(|v| v.crop()) {
                 let missing = !expansion.all_rotations().any(|v| this_level.contains(&v));
 

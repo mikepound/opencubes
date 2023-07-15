@@ -6,8 +6,6 @@ use std::sync::{
     Arc,
 };
 
-use indicatif::ProgressStyle;
-
 mod iterator;
 
 /// A polycube
@@ -347,6 +345,25 @@ impl PolyCube {
         cube_next
     }
 
+    #[cfg(feature = "indicatif")]
+    fn make_bar(len: usize) -> indicatif::ProgressBar {
+        use indicatif::{ProgressBar, ProgressStyle};
+
+        let bar = ProgressBar::new(len as u64);
+
+        let pos_width = format!("{}", len).len();
+
+        let template =
+            format!("{{spinner:.green}} {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+
+        bar.set_style(
+            ProgressStyle::with_template(&template)
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        bar
+    }
+
     /// Obtain a list of [`PolyCube`]s representing all unique expansions of the
     /// items in `from_set`.
     ///
@@ -358,22 +375,7 @@ impl PolyCube {
         use std::collections::HashSet;
 
         #[cfg(feature = "indicatif")]
-        let bar = {
-            let bar = indicatif::ProgressBar::new(from_set.len() as u64);
-
-            let pos_width = format!("{}", from_set.len()).len();
-
-            let template = format!(
-                "{{spinner:.green}} {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
-            );
-
-            bar.set_style(
-                ProgressStyle::with_template(&template)
-                    .unwrap()
-                    .progress_chars("#>-"),
-            );
-            bar
-        };
+        let bar = Self::make_bar(from_set.len());
 
         let mut this_level = HashSet::new();
 

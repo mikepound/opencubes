@@ -114,10 +114,12 @@ Hashy gen(uint n, int threads = 1) {
     if (n < 1)
         return {};
     else if (n == 1) {
+        hashes.init(n);
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     } else if (n == 2) {
+        hashes.init(2);
         hashes.insert(Cube{{XYZ(0, 0, 0), XYZ(0, 0, 1)}}, XYZ(0, 0, 1));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;

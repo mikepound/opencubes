@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -32,17 +31,27 @@ fn unique_expansions(alloc_tracker: Rc<AtomicUsize>, n: usize) -> Vec<PolyCube> 
 }
 
 fn main() {
+    let count = match std::env::args().skip(1).next() {
+        Some(count) => count,
+        None => {
+            eprintln!("Missing `count` argument.");
+            std::process::exit(1);
+        }
+    };
+
+    let count: usize = if let Ok(v) = count.parse() {
+        v
+    } else {
+        eprintln!("Invalid value for `count` argument.");
+        std::process::exit(1);
+    };
+
     let alloc_tracker = Rc::new(AtomicUsize::new(0));
+    let l4 = unique_expansions(alloc_tracker.clone(), count);
 
-    let l4 = unique_expansions(alloc_tracker.clone(), 9);
-
-    let l4_hash: HashSet<_> = l4.iter().map(Clone::clone).collect();
-
-    println!("{}, {}", l4.len(), alloc_tracker.load(Ordering::Relaxed));
-
-    l4.iter().skip(117).take(2).for_each(|v| println!("{v}"));
-    l4.iter().skip(159).take(2).for_each(|v| println!("{v}"));
-
-    assert_eq!(l4_hash.len(), l4.len(), "Hash disagrees with output list");
-    assert_eq!(l4.len(), 29, "Incorrect length");
+    println!(
+        "Unique polycubes found: {}, Total allocations: {}",
+        l4.len(),
+        alloc_tracker.load(Ordering::Relaxed)
+    );
 }

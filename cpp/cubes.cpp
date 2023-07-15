@@ -15,7 +15,7 @@ bool USE_CACHE = 1;
 void expand(const Cube &c, Hashy &hashes)
 {
     XYZSet candidates;
-    for (const auto &p : c.sparse)
+    for (const auto &p : c)
     {
         candidates.insert(XYZ{p.x + 1, p.y, p.z});
         candidates.insert(XYZ{p.x - 1, p.y, p.z});
@@ -24,7 +24,7 @@ void expand(const Cube &c, Hashy &hashes)
         candidates.insert(XYZ{p.x, p.y, p.z + 1});
         candidates.insert(XYZ{p.x, p.y, p.z - 1});
     }
-    for (const auto &p : c.sparse)
+    for (const auto &p : c)
     {
         candidates.erase(p);
     }
@@ -40,9 +40,9 @@ void expand(const Cube &c, Hashy &hashes)
         int ay = (p.y < 0) ? 1 : 0;
         int az = (p.z < 0) ? 1 : 0;
         Cube newCube;
-        newCube.sparse.push_back(XYZ{p.x + ax, p.y + ay, p.z + az});
+        newCube.emplace_back(XYZ{p.x + ax, p.y + ay, p.z + az});
         std::array<int, 3> shape{p.x + ax, p.y + ay, p.z + az};
-        for (const auto &np : c.sparse)
+        for (const auto &np : c)
         {
             auto nx = np.x + ax;
             auto ny = np.y + ay;
@@ -53,7 +53,7 @@ void expand(const Cube &c, Hashy &hashes)
                 shape[1] = ny;
             if (nz > shape[2])
                 shape[2] = nz;
-            newCube.sparse.push_back(XYZ{nx, ny, nz});
+            newCube.emplace_back(XYZ{nx, ny, nz});
         }
         // printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
         // newCube.print();
@@ -68,7 +68,7 @@ void expand(const Cube &c, Hashy &hashes)
             if (res.second.size() == 0)
                 continue; // rotation generated violating shape
             Cube rotatedCube{res.second};
-            std::sort(rotatedCube.sparse.begin(), rotatedCube.sparse.end());
+            std::sort(rotatedCube.begin(), rotatedCube.end());
 
             if (none_set || lowestHashCube < rotatedCube)
             {

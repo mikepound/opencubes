@@ -59,7 +59,7 @@ void save(std::string path, Hashy &cubes, uint8_t n)
     for (const auto &s : cubes.byshape)
         for (const auto &c : s.second.set)
         {
-            for (const auto &p : c.sparse)
+            for (const auto &p : c)
             {
                 ofs.write((const char *)&p.joined, sizeof(p.joined));
             }

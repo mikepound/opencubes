@@ -83,9 +83,9 @@ struct Cube
 
     bool operator<(const Cube &b) const
     {
-        if (sparse.size() != b.sparse.size())
-            return sparse.size() < b.sparse.size();
-        for (int i = 0; i < sparse.size(); ++i)
+        if (size() != b.size())
+            return size() < b.size();
+        for (int i = 0; i < size(); ++i)
         {
             if (sparse[i].joined < b.sparse[i].joined)
                 return true;
@@ -107,8 +107,8 @@ struct HashCube
     size_t operator()(const Cube &cube) const
     {
         // https://stackoverflow.com/questions/20511347/a-good-hash-function-for-a-vector/72073933#72073933
-        std::size_t seed = cube.sparse.size();
-        for (auto &p : cube.sparse)
+        std::size_t seed = cube.size();
+        for (auto &p : cube)
         {
             auto x = HashXYZ()(p);
             // x = ((x >> 16) ^ x) * 0x45d9f3b;

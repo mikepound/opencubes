@@ -10,6 +10,8 @@
 #include "rotations.hpp"
 #include "structs.hpp"
 
+const int PERF_STEP = 500;
+
 bool USE_CACHE = 1;
 bool WRITE_CACHE = 1;
 
@@ -28,11 +30,11 @@ void expand(const Cube &c, Hashy &hashes) {
         candidates.erase(p);
     }
 #ifdef DBG
-    printf("candidates: %lu\n\r", candidates.size());
+    std::printf("candidates: %lu\n\r", candidates.size());
 #endif
     for (const auto &p : candidates) {
 #ifdef DBG
-        printf("(%2d %2d %2d)\n\r", p.x, p.y, p.z);
+        std::printf("(%2d %2d %2d)\n\r", p.x, p.y, p.z);
 #endif
         int ax = (p.x < 0) ? 1 : 0;
         int ay = (p.y < 0) ? 1 : 0;
@@ -50,7 +52,7 @@ void expand(const Cube &c, Hashy &hashes) {
             if (nz > shape[2]) shape[2] = nz;
             newCube.emplace_back(XYZ{nx, ny, nz});
         }
-        // printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
+        // std::printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
         // newCube.print();
 
         // check rotations
@@ -65,7 +67,7 @@ void expand(const Cube &c, Hashy &hashes) {
 
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
-                // printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
+                // std::printf("shape %2d %2d %2d\n\r", res.first.x, res.first.y, res.first.z);
                 lowestHashCube = std::move(rotatedCube);
                 lowestShape = res.first;
             }
@@ -83,26 +85,28 @@ void expand(const Cube &c, Hashy &hashes) {
 }
 
 void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end) {
-    printf("  start from %lu to %lu\n\r", start, end);
     auto t_start = std::chrono::steady_clock::now();
-
+    auto t_last = t_start;
+    auto total = end - start;
     for (auto i = start; i < end; ++i) {
         expand(base[i], hashes);
         auto count = i - start;
-        if (start == 0 && (count % 100 == 99)) {
+        if (start == 0 && (count % PERF_STEP == (PERF_STEP - 1))) {
             auto t_end = std::chrono::steady_clock::now();
-            auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
-            auto perc = 100 * count / (end - start);
-            auto its = 1000.f * count / dt_ms;
-            auto remaining = (end - i) / its;
-            std::printf(" %3lu%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+            auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+            auto dt_us = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_last).count();
+            t_last = t_end;
+            auto perc = 100 * count / total;
+            auto avg = 1000000.f * count / total_us;
+            auto its = 1000000.f * PERF_STEP / dt_us;
+            auto remaining = (end - i) / avg;
+            std::printf(" %3ld%%, %5.0f avg baseCubes/s, %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, avg, its, remaining);
             std::flush(std::cout);
         }
     }
     auto t_end = std::chrono::steady_clock::now();
     auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
-    std::printf("  done from %lu to %lu: found %lu\n\r", start, end, hashes.size());
-    std::printf("  took %.2f s\033[0K\n\r", dt_ms / 1000.f);
+    std::printf("  done took %.2f s [%7lu, %7lu]\033[0K\n\r", dt_ms / 1000.f, start, end);
 }
 
 Hashy gen(int n, int threads = 1) {
@@ -131,20 +135,24 @@ Hashy gen(int n, int threads = 1) {
     int count = 0;
     if (threads == 1 || base.size() < 100) {
         auto start = std::chrono::steady_clock::now();
+        auto last = start;
         int total = base.size();
 
         for (const auto &s : base.byshape) {
-            // printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
+            // std::printf("shapes %d %d %d\n\r", s.first.x, s.first.y, s.first.z);
             for (const auto &b : s.second.set) {
                 expand(b, hashes);
                 count++;
-                if (count % 100 == 99) {
+                if (count % PERF_STEP == (PERF_STEP - 1)) {
                     auto end = std::chrono::steady_clock::now();
-                    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+                    auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+                    auto dt_us = std::chrono::duration_cast<std::chrono::microseconds>(end - last).count();
+                    last = end;
                     auto perc = 100 * count / total;
-                    auto its = 1000.f * count / dt_ms;
-                    auto remaining = (total - count) / its;
-                    printf(" %3d%% %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, its, remaining);
+                    auto avg = 1000000.f * count / total_us;
+                    auto its = 1000000.f * PERF_STEP / dt_us;
+                    auto remaining = (total - count) / avg;
+                    std::printf(" %3d%%, %5.0f avg baseCubes/s, %5.0f baseCubes/s, remaining: %.0fs\033[0K\r", perc, avg, its, remaining);
                     std::flush(std::cout);
                 }
             }

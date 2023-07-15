@@ -18,3 +18,10 @@ USE_CACHE=0 ./cubes N [NUM_THREADS]
 # and
 WRITE_CACHE=0 ./cubes N [NUM_THREADS]
 ```
+
+## building (cmake)
+```bash
+mkdir build && cd build
+cmake ..
+make
+```

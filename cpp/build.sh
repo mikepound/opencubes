@@ -1,1 +1,0 @@
-g++ cubes.cpp -o cubes --std=c++17 -march=native -O3 -lpthread -Wall -Wextra -DNDEBUG

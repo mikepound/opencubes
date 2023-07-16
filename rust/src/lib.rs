@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 mod iterator;
 
 mod from_file;
-pub use from_file::PolyCubeFile;
+pub use from_file::{Compression, PolyCubeFile};
 
 pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     use indicatif::{ProgressBar, ProgressStyle};

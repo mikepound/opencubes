@@ -5,9 +5,83 @@ use std::{
     sync::{atomic::AtomicUsize, Arc},
 };
 
+use flate2::{read::GzDecoder, write::GzEncoder};
+
 use crate::PolyCube;
 
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Compression {
+    None,
+    Gzip,
+}
+
+impl From<Compression> for u8 {
+    fn from(value: Compression) -> Self {
+        match value {
+            Compression::None => 0,
+            Compression::Gzip => 1,
+        }
+    }
+}
+
+impl TryFrom<u8> for Compression {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let compression = match value {
+            0 => Self::None,
+            1 => Self::Gzip,
+            _ => return Err(()),
+        };
+        Ok(compression)
+    }
+}
+
+enum Reader<T>
+where
+    T: Read,
+{
+    Uncompressed(BufReader<T>),
+    Gzip(GzDecoder<T>),
+}
+
+impl<T> Read for Reader<T>
+where
+    T: Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Reader::Uncompressed(t) => t.read(buf),
+            Reader::Gzip(t) => t.read(buf),
+        }
+    }
+}
+
+enum Writer<T>
+where
+    T: Write,
+{
+    Uncompressed(T),
+    Gzip(GzEncoder<T>),
+}
+
+impl<T> Write for Writer<T>
+where
+    T: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Writer::Uncompressed(t) => t.write(buf),
+            Writer::Gzip(t) => t.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        todo!()
+    }
+}
 
 pub struct PolyCubeFile<T = File>
 where
@@ -15,7 +89,7 @@ where
 {
     pub should_canonicalize: bool,
     had_error: bool,
-    input: BufReader<T>,
+    input: Reader<T>,
     len: Option<usize>,
     cubes_read: usize,
     cubes_are_canonical: bool,
@@ -76,10 +150,15 @@ where
 impl PolyCubeFile {
     pub fn new(p: impl AsRef<Path>) -> std::io::Result<Self> {
         let file = std::fs::File::open(p.as_ref())?;
-        Self::new_from_file(file)
+        Self::new_from_read(file)
     }
 
-    pub fn write<C, I>(mut cubes: I, is_canonical: bool, mut file: File) -> std::io::Result<()>
+    pub fn write<C, I>(
+        mut cubes: I,
+        is_canonical: bool,
+        compression: Compression,
+        mut file: File,
+    ) -> std::io::Result<()>
     where
         I: Iterator<Item = C>,
         C: std::borrow::Borrow<PolyCube>,
@@ -88,10 +167,10 @@ impl PolyCubeFile {
 
         file.write_all(&[0, 0, 0, 0])?;
 
-        let compression = 0;
-        let orientation = if is_canonical { 1 } else { 0 };
+        let compression_val = compression.into();
+        let orientation_val = if is_canonical { 1 } else { 0 };
 
-        file.write_all(&[orientation, compression])?;
+        file.write_all(&[orientation_val, compression_val])?;
 
         let mut cube_count = 0;
         let (_, max) = cubes.size_hint();
@@ -113,10 +192,20 @@ impl PolyCubeFile {
             file.write_all(&[next_byte])?;
         }
 
-        if let Some(e) = cubes.find_map(|v| v.borrow().pack(&mut file).err()) {
+        let mut writer = match compression {
+            Compression::None => Writer::Uncompressed(&mut file),
+            Compression::Gzip => {
+                Writer::Gzip(GzEncoder::new(&mut file, flate2::Compression::default()))
+            }
+        };
+
+        if let Some(e) = cubes.find_map(|v| v.borrow().pack(&mut writer).err()) {
             return Err(e);
         }
 
+        drop(writer);
+
+        // Finally, write the magic
         file.seek(std::io::SeekFrom::Start(0))?;
         file.write(&MAGIC)?;
 
@@ -136,9 +225,7 @@ where
         self.cubes_are_canonical
     }
 
-    pub fn new_from_file(input: T) -> std::io::Result<Self> {
-        let mut input = BufReader::with_capacity(16 * 1024, input);
-
+    pub fn new_from_read(mut input: T) -> std::io::Result<Self> {
         let mut magic = [0u8; 4];
         input.read_exact(&mut magic)?;
 
@@ -154,13 +241,6 @@ where
 
         let [orientation, compression] = header;
         let canonicalized = orientation != 0;
-
-        if compression != 0 {
-            return Err(std::io::Error::new(
-                ErrorKind::Other,
-                "Compression is not supported",
-            ));
-        }
 
         let mut cube_count: u64 = 0;
         let mut shift = 0;
@@ -186,6 +266,17 @@ where
             None
         } else {
             Some(cube_count as usize)
+        };
+
+        let input = match Compression::try_from(compression) {
+            Ok(Compression::None) => Reader::Uncompressed(BufReader::new(input)),
+            Ok(Compression::Gzip) => Reader::Gzip(GzDecoder::new(input)),
+            Err(_) => {
+                return Err(std::io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("Unsupported compression type {compression}"),
+                ))
+            }
         };
 
         Ok(Self {

@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::{Args, Parser};
+use clap::{Args, Parser, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use polycubes::{make_bar, PolyCube, PolyCubeFile};
 
@@ -46,6 +46,21 @@ pub struct ValidateArgs {
     pub no_in_memory: bool,
 }
 
+#[derive(ValueEnum, Debug, Clone, Copy)]
+pub enum Compression {
+    None,
+    Gzip,
+}
+
+impl From<Compression> for polycubes::Compression {
+    fn from(value: Compression) -> Self {
+        match value {
+            Compression::None => polycubes::Compression::None,
+            Compression::Gzip => polycubes::Compression::Gzip,
+        }
+    }
+}
+
 #[derive(Clone, Args)]
 pub struct EnumerateOpts {
     /// The N value for which to calculate all unique polycubes.
@@ -58,6 +73,10 @@ pub struct EnumerateOpts {
     /// Don't use the cache
     #[clap(long, short = 'c')]
     pub no_cache: bool,
+
+    /// Compress written cache files
+    #[clap(long, value_enum)]
+    pub cache_compression: Compression,
 }
 
 fn unique_expansions<F>(
@@ -65,6 +84,7 @@ fn unique_expansions<F>(
     use_cache: bool,
     alloc_tracker: Arc<AtomicUsize>,
     n: usize,
+    compression: Compression,
 ) -> Vec<PolyCube>
 where
     F: FnMut(usize, std::slice::Iter<'_, PolyCube>) -> Vec<PolyCube>,
@@ -142,8 +162,13 @@ where
                 let name = &format!("cubes_{i}.pcube");
                 if !std::fs::File::open(name).is_ok() {
                     println!("Saving {} cubes to cache file", next.len());
-                    PolyCubeFile::write(next.iter(), true, std::fs::File::create(name).unwrap())
-                        .unwrap();
+                    PolyCubeFile::write(
+                        next.iter(),
+                        true,
+                        compression.into(),
+                        std::fs::File::create(name).unwrap(),
+                    )
+                    .unwrap();
                 }
             }
 
@@ -311,6 +336,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cache,
             alloc_tracker.clone(),
             n,
+            opts.cache_compression,
         )
     } else {
         unique_expansions(
@@ -320,6 +346,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cache,
             alloc_tracker.clone(),
             n,
+            opts.cache_compression,
         )
     };
 

@@ -75,7 +75,7 @@ pub struct EnumerateOpts {
     pub no_cache: bool,
 
     /// Compress written cache files
-    #[clap(long, value_enum)]
+    #[clap(long, value_enum, default_value = "none")]
     pub cache_compression: Compression,
 }
 

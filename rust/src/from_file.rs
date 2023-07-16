@@ -57,6 +57,13 @@ where
             Reader::Gzip(t) => t.read(buf),
         }
     }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
+        match self {
+            Reader::Uncompressed(t) => t.read_exact(buf),
+            Reader::Gzip(t) => t.read_exact(buf),
+        }
+    }
 }
 
 enum Writer<T>

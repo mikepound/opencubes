@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{ErrorKind, Read, Write},
+    io::{ErrorKind, Read, Seek, Write},
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -10,10 +10,11 @@ use crate::PolyCube;
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
 pub struct PolyCubeFile {
+    pub should_canonicalize: bool,
+    had_error: bool,
     file: File,
     len: Option<usize>,
     cubes_read: usize,
-    pub should_canonicalize: bool,
     cubes_are_canonical: bool,
     alloc_count: Arc<AtomicUsize>,
 }
@@ -23,13 +24,17 @@ impl Iterator for PolyCubeFile {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         if let Some(len) = self.len {
-            (len, Some(len))
+            (0, Some(len))
         } else {
             (0, None)
         }
     }
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.had_error {
+            return None;
+        }
+
         let next_cube = PolyCube::unpack_with(self.alloc_count.clone(), &mut self.file);
 
         let mut next_cube = match (next_cube, self.len) {
@@ -38,6 +43,7 @@ impl Iterator for PolyCubeFile {
                 if expected == self.cubes_read {
                     return None;
                 } else {
+                    self.had_error = true;
                     let msg = format!(
                         "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
                         self.cubes_read
@@ -132,6 +138,7 @@ impl PolyCubeFile {
             cubes_are_canonical: canonicalized,
             alloc_count: Arc::new(AtomicUsize::new(0)),
             should_canonicalize: true,
+            had_error: false,
         })
     }
 
@@ -142,7 +149,7 @@ impl PolyCubeFile {
     {
         file.set_len(0)?;
 
-        file.write_all(&MAGIC)?;
+        file.write_all(&[0, 0, 0, 0])?;
 
         let compression = 0;
         let orientation = if is_canonical { 1 } else { 0 };
@@ -150,10 +157,10 @@ impl PolyCubeFile {
         file.write_all(&[orientation, compression])?;
 
         let mut cube_count = 0;
-        let (min, max) = cubes.size_hint();
+        let (_, max) = cubes.size_hint();
 
-        if Some(min) == max {
-            cube_count = min;
+        if let Some(max) = max {
+            cube_count = max;
         }
 
         while cube_count > 0 {
@@ -170,6 +177,9 @@ impl PolyCubeFile {
         if let Some(e) = cubes.find_map(|v| v.borrow().pack(&mut file).err()) {
             return Err(e);
         }
+
+        file.seek(std::io::SeekFrom::Start(0))?;
+        file.write(&MAGIC)?;
 
         Ok(())
     }

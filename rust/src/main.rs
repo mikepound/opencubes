@@ -7,11 +7,27 @@ use std::{
     time::Instant,
 };
 
-use clap::Parser;
+use clap::{Args, Parser};
 use polycubes::{PolyCube, PolyCubeFile};
 
 #[derive(Clone, Parser)]
-pub struct Opts {
+pub enum Opts {
+    Run(RunOpts),
+    /// Validate the contents of a pcube file.
+    Validate(ValidateArgs),
+}
+
+#[derive(Clone, Args)]
+pub struct ValidateArgs {
+    /// The path of the PCube file to check
+    pub path: String,
+    /// Validate that all values in the file are unique
+    #[clap(short, long)]
+    pub uniqueness: bool,
+}
+
+#[derive(Clone, Args)]
+pub struct RunOpts {
     /// The N value for which to calculate all unique polycubes.
     pub n: usize,
 
@@ -91,7 +107,7 @@ where
             if use_cache {
                 let name = &format!("cubes_{i}.pcube");
                 if !std::fs::File::open(name).is_ok() {
-                    println!("Saving data to cache");
+                    println!("Saving {} to cache file", next.len());
                     PolyCubeFile::write(next.iter(), true, std::fs::File::create(name).unwrap())
                         .unwrap();
                 }
@@ -104,10 +120,42 @@ where
     current
 }
 
-#[allow(unreachable_code, unused)]
-fn main() {
-    let opts = Opts::parse();
+pub fn validate(path: String) -> std::io::Result<()> {
+    let mut file = PolyCubeFile::new(&path)?;
+    file.should_canonicalize = false;
+    let canonical = file.canonical();
 
+    println!("Validating {}", path);
+
+    let read: Vec<_> = file.collect();
+
+    if let Some(e) = read.iter().find_map(|r| r.as_ref().err()) {
+        panic!("Reading the file failed. Error: {e}.");
+    }
+
+    let success: Vec<_> = read.into_iter().filter_map(|v| v.ok()).collect();
+
+    println!("Read {} cubes from file succesfully.", success.len());
+
+    if canonical {
+        println!("Header says that cubes are canonical. Verifying...");
+
+        if let Some(_) = success.iter().find(|v| {
+            v != &&v
+                .all_rotations()
+                .max_by(PolyCube::canonical_ordering)
+                .unwrap()
+        }) {
+            panic!("Found non-canonical polycube in file that claims to contain canonical cubes.");
+        }
+    }
+
+    println!("Validation succesful");
+
+    Ok(())
+}
+
+pub fn run(opts: &RunOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
 
@@ -142,4 +190,13 @@ fn main() {
 
     println!("Unique polycubes found for N = {n}: {cubes}, Total allocations: {allocations}",);
     println!("Duration: {} ms", duration.as_millis());
+}
+
+fn main() {
+    let opts = Opts::parse();
+
+    match opts {
+        Opts::Run(r) => run(&r),
+        Opts::Validate(a) => validate(a.path).unwrap(),
+    }
 }

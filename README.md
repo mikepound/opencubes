@@ -29,7 +29,7 @@ You can download the cache files for n=3 to n=12 from [here](https://drive.googl
 ## Improving the code
 This repo already has some improvements included, and will happily accept more via pull request.
 Some things you might think about:
-- C and Rust implementations are currently in development, if you would like to contribute to these look at the pull requests (or of course feel free to start you own).
+- C++ and Rust implementations are currently in development, if you would like to contribute to these look at the pull requests (or of course feel free to start you own).
 - The main limiting factor at this time seems to be memory usage, at n=14+ you need hundereds of GB's just to store the cubes, so keeping them all in main memory gets dificult.
 - Distributing the computation across many systems would allow us to scale horizontally rather than vertically, but it opens questions of how to do so without each system having a full copy of all the cubes, and how to manage the large quantities of data.
 - Calculating 24 rotations of a cube is slow, the only way to avoid this would be to come up with some rotationally invariant way of comparing cubes. I've not thought of one yet!

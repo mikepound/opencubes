@@ -13,6 +13,9 @@ use parking_lot::RwLock;
 
 mod iterator;
 
+mod from_file;
+pub use from_file::PolyCubeFromFileReader;
+
 /// A polycube
 #[derive(Debug)]
 pub struct PolyCube {
@@ -201,6 +204,24 @@ impl PolyCube {
         me.increase_alloc_count();
 
         me
+    }
+
+    pub fn new_raw(
+        alloc_count: Arc<AtomicUsize>,
+        dim_1: usize,
+        dim_2: usize,
+        dim_3: usize,
+        filled: Vec<bool>,
+    ) -> Self {
+        Self {
+            alloc_count,
+            dim_1,
+            dim_2,
+            dim_3,
+            dim_2_scalar: dim_1,
+            dim_3_scalar: dim_1 * dim_2,
+            filled,
+        }
     }
 
     /// Get the amount of allocations that have been

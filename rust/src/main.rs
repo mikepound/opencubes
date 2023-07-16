@@ -306,7 +306,6 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
         if len.is_some() {
             bar.inc(1);
-            bar.tick();
         } else if last_tick.elapsed() >= Duration::from_millis(66) {
             last_tick = Instant::now();
             bar.set_message(format!("{total_read}"));
@@ -442,12 +441,12 @@ pub fn convert(opts: &ConvertArgs) {
     let mut total_read = 0;
     let mut last_tick = Instant::now();
     bar.tick();
+
     let input = input_file.filter_map(|v| {
         total_read += 1;
 
         if len.is_some() {
             bar.inc(1);
-            bar.tick();
         } else if last_tick.elapsed() >= Duration::from_millis(66) {
             last_tick = Instant::now();
             bar.set_message(format!("{total_read}"));

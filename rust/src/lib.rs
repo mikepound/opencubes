@@ -684,12 +684,14 @@ impl PolyCube {
                     }
                 }
 
-                bar.inc(1);
+                if use_bar {
+                    bar.inc(1);
 
-                // Try to avoid doing this too often
-                if bar.position() % (this_level.read().len() as u64 / 100).max(100) == 0 {
-                    let len = this_level.read().len();
-                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
+                    // Try to avoid doing this too often
+                    if bar.position() % (this_level.read().len() as u64 / 100).max(100) == 0 {
+                        let len = this_level.read().len();
+                        bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
+                    }
                 }
             }
         });

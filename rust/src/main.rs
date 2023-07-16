@@ -258,13 +258,15 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
             bar.tick();
         }
 
-        let canonical_form = cube
-            .all_rotations()
-            .max_by(PolyCube::canonical_ordering)
-            .unwrap();
+        let mut form: Option<PolyCube> = None;
+        let canonical_form = || {
+            cube.all_rotations()
+                .max_by(PolyCube::canonical_ordering)
+                .unwrap()
+        };
 
         if canonical && validate_canonical {
-            if canonical_form != cube {
+            if form.get_or_insert_with(|| canonical_form()) != &cube {
                 exit(
                     "Error: Found non-canonical polycube in file that claims to contain canonical cubes."
                 );
@@ -279,7 +281,8 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
 
         if let Some(uniqueness) = &mut uniqueness {
-            if !uniqueness.insert(canonical_form) {
+            let form = form.get_or_insert_with(|| canonical_form()).clone();
+            if !uniqueness.insert(form) {
                 exit("Found non-unique polycubes.");
             }
         }

@@ -57,35 +57,6 @@ impl PartialEq for PolyCube {
     }
 }
 
-impl Ord for PolyCube {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use core::cmp::Ordering;
-
-        match self.filled.cmp(&other.filled) {
-            Ordering::Equal => {}
-            ord => return ord,
-        }
-
-        match self.dim_1.cmp(&other.dim_1) {
-            Ordering::Equal => {}
-            ord => return ord,
-        }
-
-        match self.dim_2.cmp(&other.dim_2) {
-            Ordering::Equal => {}
-            ord => return ord,
-        }
-
-        self.dim_3.cmp(&other.dim_3)
-    }
-}
-
-impl PartialOrd for PolyCube {
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl std::hash::Hash for PolyCube {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // For hashing purposes we do not care about the allocation tracker,
@@ -158,6 +129,30 @@ impl PolyCube {
     /// Get the dimensions of this polycube
     pub fn dims(&self) -> (usize, usize, usize) {
         (self.dim_1, self.dim_2, self.dim_3)
+    }
+
+    /// Find the ordering between two rotated versions of the same
+    /// PolyCube.
+    ///
+    /// This function only produces valid results if `self` and `other` are
+    /// two different rotations of the same PolyCube.
+    pub fn canonical_ordering(&self, other: &Self) -> core::cmp::Ordering {
+        use core::cmp::Ordering;
+
+        macro_rules! check_next {
+            ($name:ident) => {
+                match self.$name.cmp(&other.$name) {
+                    Ordering::Equal => {}
+                    ord => return ord,
+                }
+            };
+        }
+
+        check_next!(dim_1);
+        check_next!(dim_2);
+        check_next!(dim_3);
+        // I don't think this does what I expect it to do...
+        self.filled.cmp(&other.filled)
     }
 
     /// Calculate the offset into `self.filled` using the provided offsets

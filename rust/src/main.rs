@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    io::ErrorKind,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -63,14 +64,18 @@ where
         let mut calculate_from = 2;
 
         if use_cache {
-            let mut highest = None;
-            for i in calculate_from..=n {
-                if let Ok(cache_file) = PolyCubeFile::new(format!("cubes_{}.pcube", i)) {
-                    highest = Some((i, cache_file));
-                }
-            }
+            for n in (calculate_from..=n).rev() {
+                let name = format!("cubes_{n}.pcube");
+                let cache = match PolyCubeFile::new(&name) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
+                            println!("Enountered invalid cache file {name}. Error: {e}.");
+                        }
+                        continue;
+                    }
+                };
 
-            if let Some((n, cache)) = highest {
                 println!("Found cache for N = {n}. Loading data...");
 
                 if !cache.canonical() {
@@ -79,24 +84,34 @@ where
 
                 let len = cache.len();
                 calculate_from = n + 1;
+
+                let mut error = None;
+                let mut total_loaded = 0;
                 let cached: HashSet<_> = cache
-                    .filter_map(|v| match v {
-                        Ok(v) => Some(v),
-                        Err(e) => panic!("Failed to load a cube. {e}"),
+                    .filter_map(|v| {
+                        total_loaded += 1;
+                        match v {
+                            Ok(v) => Some(v),
+                            Err(e) => {
+                                error = Some(e);
+                                None
+                            }
+                        }
                     })
                     .collect();
 
-                if let Some(len) = len {
-                    assert_eq!(
-                        len,
-                        cached.len(),
-                        "There were non-unique cubes in the cache."
-                    );
-                } else {
-                    panic!("Cannot determine if all cubes in the cache where unique.");
+                let total_len = len.unwrap_or(total_loaded);
+
+                if total_len != cached.len() {
+                    println!("There were non-unique cubes in the cache file. Continuing...")
                 }
 
-                current = cached.into_iter().collect();
+                if let Some(e) = error {
+                    println!("Error occured while loading {name}. Error: {e}");
+                } else {
+                    current = cached.into_iter().collect();
+                    break;
+                }
             }
         }
 

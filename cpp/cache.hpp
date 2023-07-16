@@ -1,6 +1,7 @@
 #pragma once
 #ifndef OPENCUBES_CACHE_HPP
 #define OPENCUBES_CACHE_HPP
+#include <algorithm>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -8,62 +9,178 @@
 
 #include "structs.hpp"
 
-Hashy load(std::string path) {
-    Hashy cubes;
-    auto ifs = std::ifstream(path, std::ios::binary);
-    if (!ifs.is_open()) return cubes;
-    uint8_t cubelen = 0;
-    // read big filesize by reading file from:
-    // https://stackoverflow.com/questions/2409504/using-c-filestreams-fstream-how-can-you-determine-the-size-of-a-file
-    ifs.ignore(std::numeric_limits<std::streamsize>::max());
-    uint64_t filelen = ifs.gcount();
-    ifs.clear();  //  Since ignore will have set eof.
-    ifs.seekg(0, std::ios_base::beg);
+/*
+====================
+cache file header
+====================
 
-    ifs.read((char *)&cubelen, 1);
-    std::printf("loading cache file \"%s\" (%lu bytes) with N = %d\n\r", path.c_str(), filelen, cubelen);
+uint32_t magic = "PCUB"
+uint32_t n = cache file for n cubes in a polycube
+uint32_t numShapes = number of different shapes in cachefile
+-------
 
-    auto cubeSize = 4 * (uint)cubelen;
-    auto numCubes = (filelen - 1U) / cubeSize;
-    if (numCubes * cubeSize + 1U != filelen) {
-        std::printf("error reading file, size does not match\n\r");
-        std::printf("  cubeSize = %u bytes, numCubes = %lu\n\r", cubeSize, numCubes);
+====================
+shapetable:
+====================
+shapeEntry {
+    uint8_t dim0 // offset by -1
+    uint8_t dim1 // offset by -1
+    uint8_t dim2 // offset by -1
+    uint8_t reserved
+    uint64_t offset in file
+}
+shapeEntry[numShapes]
+
+
+====================
+XYZ data
+====================
+
+*/
+struct Cache {
+    static constexpr uint32_t MAGIC = 0x42554350;
+    static constexpr uint32_t XYZ_SIZE = 3;
+    static constexpr uint32_t ALL_SHAPES = -1;
+    struct Header {
+        uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
+        uint32_t n;              // we will never need 32bit but it is nicely aligned
+        uint32_t numShapes;      // defines length of the shapeTable
+        uint64_t numberOfXYZs;   // total number of XYZ elements
+    };
+    struct ShapeEntry {
+        uint8_t dim0;      // offset by -1
+        uint8_t dim1;      // offset by -1
+        uint8_t dim2;      // offset by -1
+        uint8_t reserved;  // for alignment
+        uint64_t offset;   // from beginning of file
+        uint64_t size;     // in bytes should be multiple of XYZ_SIZE
+    };
+
+    static Hashy load(std::string path, uint32_t extractShape = ALL_SHAPES) {
+        Hashy cubes;
+        auto ifs = std::ifstream(path, std::ios::binary);
+        if (!ifs.is_open()) return cubes;
+        Header header;
+        if (!ifs.read((char *)&header, sizeof(header))) {
+            return cubes;
+        }
+        // check magic
+        if (header.magic != MAGIC) {
+            return cubes;
+        }
+#ifdef CACHE_LOAD_HEADER_ONLY
+        std::printf("loading cache file \"%s\" for N = %u", path.c_str(), header.n);
+        std::printf(", %u shapes, %lu XYZs\n\r", header.numShapes, header.numberOfXYZs);
+#endif
+        auto cubeSize = XYZ_SIZE * header.n;
+        // std::printf("cubeSize: %u\n\r", cubeSize);
+
+        for (uint32_t i = 0; i < header.numShapes; ++i) {
+            ShapeEntry shapeEntry;
+            if (!ifs.read((char *)&shapeEntry, sizeof(shapeEntry))) {
+                std::printf("ERROR reading ShapeEntry %u\n\r", i);
+                exit(-1);
+            }
+            if (ALL_SHAPES != extractShape && i != extractShape) continue;
+#ifdef CACHE_PRINT_SHAPEENTRIES
+            std::printf("ShapeEntry %3u: [%2d %2d %2d] offset: 0x%08lx size: 0x%08lx (%ld polycubes)\n\r", i, shapeEntry.dim0, shapeEntry.dim1, shapeEntry.dim2,
+                        shapeEntry.offset, shapeEntry.size, shapeEntry.size / cubeSize);
+#endif
+            if (shapeEntry.size % cubeSize != 0) {
+                std::printf("ERROR shape block is not divisible by cubeSize!\n\r");
+                exit(-1);
+            }
+#ifndef CACHE_LOAD_HEADER_ONLY
+            // remember pos in file
+            auto pos = ifs.tellg();
+
+            // read XYZ contents
+            ifs.seekg(shapeEntry.offset);
+            const uint32_t CHUNK_SIZE = 512 * XYZ_SIZE;
+            uint8_t buf[CHUNK_SIZE] = {0};
+            uint64_t buf_offset = 0;
+            uint32_t numCubes = shapeEntry.size / cubeSize;
+            XYZ shape(shapeEntry.dim0, shapeEntry.dim1, shapeEntry.dim2);
+            uint64_t readsize = shapeEntry.size - buf_offset;
+            if (readsize > CHUNK_SIZE) readsize = CHUNK_SIZE;
+            if (!ifs.read((char *)&buf, readsize)) {
+                std::printf("ERROR reading XYZs for Shape %u\n\r", i);
+                exit(-1);
+            }
+            for (uint32_t j = 0; j < numCubes; ++j) {
+                Cube next;
+                next.sparse.resize(header.n);
+                for (uint32_t k = 0; k < header.n; ++k) {
+                    // check if buf contains next XYZ
+                    uint64_t curr_offset = j * cubeSize + k * XYZ_SIZE;
+                    if (curr_offset >= buf_offset + CHUNK_SIZE) {
+                        // std::printf("reload buffer\n\r");
+                        buf_offset += CHUNK_SIZE;
+                        readsize = shapeEntry.size - buf_offset;
+                        if (readsize > CHUNK_SIZE) readsize = CHUNK_SIZE;
+                        if (!ifs.read((char *)&buf, readsize)) {
+                            std::printf("ERROR reading XYZs for Shape %u\n\r", i);
+                            exit(-1);
+                        }
+                    }
+
+                    next.sparse[k].data[0] = buf[curr_offset - buf_offset + 0];
+                    next.sparse[k].data[1] = buf[curr_offset - buf_offset + 1];
+                    next.sparse[k].data[2] = buf[curr_offset - buf_offset + 2];
+                }
+                cubes.insert(next, shape);
+            }
+
+            // restore pos
+            ifs.seekg(pos);
+#endif
+        }
+        std::printf("  loaded %lu cubes\n\r", cubes.size());
         return cubes;
     }
-    std::printf("  num polycubes loading: %ld\n\r", numCubes);
-    cubes.init(cubelen);
-    for (size_t i = 0; i < numCubes; ++i) {
-        Cube next;
-        next.sparse.resize(cubelen);
-        XYZ shape;
-        for (int k = 0; k < cubelen; ++k) {
-            uint32_t tmp;
-            ifs.read((char *)&tmp, 4);
-            next.sparse[k][0] = (tmp >> 16) & 0xff;
-            next.sparse[k][1] = (tmp >> 8) & 0xff;
-            next.sparse[k][2] = (tmp)&0xff;
-            if (next.sparse[k].x() > shape.x()) shape.x() = next.sparse[k].x();
-            if (next.sparse[k].y() > shape.y()) shape.y() = next.sparse[k].y();
-            if (next.sparse[k].z() > shape.z()) shape.z() = next.sparse[k].z();
-        }
-        cubes.insert(next, shape);
-    }
-    std::printf("  loaded %lu cubes\n\r", cubes.size());
-    return cubes;
-}
 
-void save(std::string path, Hashy &cubes, uint8_t n) {
-    if (cubes.size() == 0) return;
-    std::ofstream ofs(path, std::ios::binary);
-    ofs << n;
-    for (const auto &s : cubes.byshape)
-        for (const auto &c : s.second.set) {
-            for (const auto &p : c) {
-                uint32_t tmp = p;
-                ofs.write((const char *)&tmp, sizeof(tmp));
-            }
+    static void save(std::string path, Hashy &hashes, uint8_t n) {
+        if (hashes.size() == 0) return;
+        std::ofstream ofs(path, std::ios::binary);
+        Header header;
+        header.magic = MAGIC;
+        header.n = n;
+        header.numShapes = hashes.byshape.size();
+        header.numberOfXYZs = hashes.size();
+        ofs.write((const char *)&header, sizeof(header));
+
+        std::vector<XYZ> keys;
+        keys.reserve(header.numShapes);
+        for (auto &pair : hashes.byshape) keys.push_back(pair.first);
+        std::sort(keys.begin(), keys.end());
+        uint64_t offset = sizeof(Header) + header.numShapes * sizeof(ShapeEntry);
+        for (auto &key : keys) {
+            ShapeEntry se;
+            se.dim0 = key.x();
+            se.dim1 = key.y();
+            se.dim2 = key.z();
+            se.reserved = 0;
+            se.offset = offset;
+            se.size = hashes.byshape[key].size() * XYZ_SIZE * n;
+            offset += se.size;
+            ofs.write((const char *)&se, sizeof(ShapeEntry));
         }
-    std::printf("saved %s\n\r", path.c_str());
-}
+        // put XYZs
+        for (auto &key : keys) {
+            for (auto &subset : hashes.byshape[key].byhash)
+                for (const auto &c : subset.set) {
+                    if constexpr (sizeof(XYZ) == XYZ_SIZE) {
+                        ofs.write((const char *)c.sparse.data(), sizeof(XYZ) * c.sparse.size());
+                    } else {
+                        for (const auto &p : c) {
+                            ofs.write((const char *)p.data, XYZ_SIZE);
+                        }
+                    }
+                }
+        }
+
+        std::printf("saved %s\n\r", path.c_str());
+    }
+};
 
 #endif

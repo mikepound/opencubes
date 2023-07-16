@@ -5,7 +5,6 @@
 
 ## usage:
 ```bash
-./build.sh
 ./cubes N [NUM_THREADS]
 ```
 

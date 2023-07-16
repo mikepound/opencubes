@@ -9,7 +9,7 @@ use crate::PolyCube;
 
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
-pub struct PolyCubeFileReader {
+pub struct PolyCubeFile {
     file: File,
     len: Option<usize>,
     cubes_read: usize,
@@ -18,7 +18,7 @@ pub struct PolyCubeFileReader {
     alloc_count: Arc<AtomicUsize>,
 }
 
-impl Iterator for PolyCubeFileReader {
+impl Iterator for PolyCubeFile {
     type Item = std::io::Result<PolyCube>;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -61,7 +61,7 @@ impl Iterator for PolyCubeFileReader {
     }
 }
 
-impl PolyCubeFileReader {
+impl PolyCubeFile {
     pub fn len(&self) -> Option<usize> {
         self.len
     }
@@ -135,7 +135,7 @@ impl PolyCubeFileReader {
         })
     }
 
-    pub fn to_file<C, I>(mut cubes: I, canonical: bool, mut file: File) -> std::io::Result<()>
+    pub fn write<C, I>(mut cubes: I, is_canonical: bool, mut file: File) -> std::io::Result<()>
     where
         I: Iterator<Item = C>,
         C: std::borrow::Borrow<PolyCube>,
@@ -145,7 +145,7 @@ impl PolyCubeFileReader {
         file.write_all(&MAGIC)?;
 
         let compression = 0;
-        let orientation = if canonical { 1 } else { 0 };
+        let orientation = if is_canonical { 1 } else { 0 };
 
         file.write_all(&[orientation, compression])?;
 

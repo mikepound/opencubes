@@ -8,7 +8,7 @@ use std::{
 };
 
 use clap::Parser;
-use polycubes::{PolyCube, PolyCubeFileReader};
+use polycubes::{PolyCube, PolyCubeFile};
 
 #[derive(Clone, Parser)]
 pub struct Opts {
@@ -49,7 +49,7 @@ where
         if use_cache {
             let mut highest = None;
             for i in calculate_from..=n {
-                if let Ok(cache_file) = PolyCubeFileReader::new(format!("cubes_{}.pcube", i)) {
+                if let Ok(cache_file) = PolyCubeFile::new(format!("cubes_{}.pcube", i)) {
                     highest = Some((i, cache_file));
                 }
             }
@@ -81,18 +81,19 @@ where
                 }
 
                 current = cached.into_iter().collect();
-
-                println!("Done!");
             }
         }
 
         for i in calculate_from..=n {
+            println!("Calculating for N = {i}");
             let next = expansion_fn(i, current.iter());
 
             if use_cache {
                 let name = &format!("cubes_{i}.pcube");
                 if !std::fs::File::open(name).is_ok() {
                     println!("Saving data to cache");
+                    PolyCubeFile::write(next.iter(), true, std::fs::File::create(name).unwrap())
+                        .unwrap();
                 }
             }
 

@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 mod iterator;
 
 mod from_file;
-pub use from_file::PolyCubeFileReader;
+pub use from_file::PolyCubeFile;
 
 /// A polycube
 #[derive(Debug)]

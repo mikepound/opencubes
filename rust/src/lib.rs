@@ -420,7 +420,7 @@ impl PolyCube {
                 // Try to avoid doing this too often
                 if iter % (this_level.len() / 100).max(100) == 0 {
                     let len = this_level.len();
-                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
+                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}"));
                 }
             }
         }

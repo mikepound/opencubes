@@ -137,6 +137,10 @@ impl PolyCube {
         (self.dim_1, self.dim_2, self.dim_3)
     }
 
+    pub fn present_cubes(&self) -> usize {
+        self.filled.iter().filter(|v| **v).count()
+    }
+
     pub fn unpack_with(
         alloc_count: Arc<AtomicUsize>,
         mut from: impl Read,

@@ -13,8 +13,9 @@ use polycubes::{PolyCube, PolyCubeFile};
 
 #[derive(Clone, Parser)]
 pub enum Opts {
-    Run(RunOpts),
-    /// Validate the contents of a pcube file.
+    /// Enumerate polycubes with a specific amount of cubes present
+    Enumerate(EnumerateOpts),
+    /// Validate the contents of a pcube file
     Validate(ValidateArgs),
 }
 
@@ -22,13 +23,24 @@ pub enum Opts {
 pub struct ValidateArgs {
     /// The path of the PCube file to check
     pub path: String,
-    /// Validate that all values in the file are unique
-    #[clap(short, long)]
-    pub uniqueness: bool,
+
+    /// Don't validate that all polycubes in the file are unique
+    #[clap(short = 'u', long)]
+    pub no_uniqueness: bool,
+
+    /// Don't validate that all of the cubes in the file are canonical if
+    /// the file header indicates that they should be
+    #[clap(short = 'c', long)]
+    pub no_canonical: bool,
+
+    /// Validate that all polycubes in the file have exactly N
+    /// cubes present
+    #[clap(long, short)]
+    pub n: Option<usize>,
 }
 
 #[derive(Clone, Args)]
-pub struct RunOpts {
+pub struct EnumerateOpts {
     /// The N value for which to calculate all unique polycubes.
     pub n: usize,
 
@@ -135,8 +147,12 @@ where
     current
 }
 
-pub fn validate(path: String) -> std::io::Result<()> {
-    let mut file = PolyCubeFile::new(&path)?;
+pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
+    let path = &opts.path;
+    let uniqueness = !opts.no_uniqueness;
+    let validate_canonical = !opts.no_canonical;
+
+    let mut file = PolyCubeFile::new(path)?;
     file.should_canonicalize = false;
     let canonical = file.canonical();
 
@@ -145,15 +161,16 @@ pub fn validate(path: String) -> std::io::Result<()> {
     let read: Vec<_> = file.collect();
 
     if let Some(e) = read.iter().find_map(|r| r.as_ref().err()) {
-        panic!("Reading the file failed. Error: {e}.");
+        eprintln!("Error: Reading the file failed. Error: {e}.");
+        std::process::exit(1);
     }
 
     let success: Vec<_> = read.into_iter().filter_map(|v| v.ok()).collect();
 
     println!("Read {} cubes from file succesfully.", success.len());
 
-    if canonical {
-        println!("Header says that cubes are canonical. Verifying...");
+    if canonical && validate_canonical {
+        println!("Verifying that provided file is canonical (header indicates that it is)...");
 
         if let Some(_) = success.iter().find(|v| {
             v != &&v
@@ -161,7 +178,45 @@ pub fn validate(path: String) -> std::io::Result<()> {
                 .max_by(PolyCube::canonical_ordering)
                 .unwrap()
         }) {
-            panic!("Found non-canonical polycube in file that claims to contain canonical cubes.");
+            eprintln!(
+                "Error: Found non-canonical polycube in file that claims to contain canonical cubes."
+            );
+            std::process::exit(1);
+        }
+    }
+
+    if let Some(n) = opts.n {
+        println!("Verifying that all polycubes in the file are N = {n}...");
+
+        if let Some(v) = success.iter().find_map(|v| {
+            if v.present_cubes() != n {
+                Some(v.present_cubes())
+            } else {
+                None
+            }
+        }) {
+            eprintln!("Error: Found a cube with N != {n}. Value: {v}");
+            std::process::exit(1);
+        }
+    }
+
+    if uniqueness {
+        println!("Verifying that all polycubes in the file are unique...");
+
+        // PolyCubeFile always spits out canonicalized polycubes
+        //
+        // TODO: typestate?
+        let canonicalized = PolyCubeFile::new(path).unwrap();
+
+        let unique: HashSet<_> = canonicalized.map(|v| v.ok()).collect();
+
+        if unique.len() != success.len() {
+            eprintln!(
+                "Unique polycubes: {}. Total polycubes: {}. File contains multiple occurences some polycubes",
+                unique.len(),
+                success.len()
+            );
+            std::process::exit(1);
         }
     }
 
@@ -170,7 +225,7 @@ pub fn validate(path: String) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn run(opts: &RunOpts) {
+pub fn enumerate(opts: &EnumerateOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
 
@@ -211,7 +266,7 @@ fn main() {
     let opts = Opts::parse();
 
     match opts {
-        Opts::Run(r) => run(&r),
-        Opts::Validate(a) => validate(a.path).unwrap(),
+        Opts::Enumerate(r) => enumerate(&r),
+        Opts::Validate(a) => validate(&a).unwrap(),
     }
 }

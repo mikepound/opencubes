@@ -10,7 +10,7 @@ use std::{
 
 use clap::{Args, Parser, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use polycubes::{make_bar, PolyCube, PolyCubeFile};
+use opencubes::{make_bar, PolyCube, PolyCubeFile};
 
 #[derive(Clone, Parser)]
 pub enum Opts {
@@ -52,11 +52,11 @@ pub enum Compression {
     Gzip,
 }
 
-impl From<Compression> for polycubes::Compression {
+impl From<Compression> for opencubes::Compression {
     fn from(value: Compression) -> Self {
         match value {
-            Compression::None => polycubes::Compression::None,
-            Compression::Gzip => polycubes::Compression::Gzip,
+            Compression::None => opencubes::Compression::None,
+            Compression::Gzip => opencubes::Compression::Gzip,
         }
     }
 }

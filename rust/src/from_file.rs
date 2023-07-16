@@ -163,7 +163,9 @@ impl PolyCubeFile {
             cube_count = max;
         }
 
-        while cube_count > 0 {
+        let mut ran_once = false;
+        while cube_count > 0 || !ran_once {
+            ran_once = true;
             let mut next_byte = (cube_count as u8) & 0x7F;
             cube_count >>= 7;
 

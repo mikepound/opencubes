@@ -5,11 +5,12 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use clap::{Args, Parser};
-use polycubes::{PolyCube, PolyCubeFile};
+use indicatif::{ProgressBar, ProgressStyle};
+use polycubes::{make_bar, PolyCube, PolyCubeFile};
 
 #[derive(Clone, Parser)]
 pub enum Opts {
@@ -37,6 +38,12 @@ pub struct ValidateArgs {
     /// cubes present
     #[clap(long, short)]
     pub n: Option<usize>,
+
+    /// Don't attempt to read the file into memory.
+    ///
+    /// If this flag is enabled, uniqueness cannot be checked.
+    #[clap(long, short = 'm')]
+    pub no_in_memory: bool,
 }
 
 #[derive(Clone, Args)]
@@ -151,76 +158,136 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let path = &opts.path;
     let uniqueness = !opts.no_uniqueness;
     let validate_canonical = !opts.no_canonical;
+    let in_memory = !opts.no_in_memory;
+    let n = opts.n;
+
+    println!("Validating {}", path);
+
+    let mut uniqueness = match (in_memory, uniqueness) {
+        (true, true) => {
+            eprintln!("Verifying uniqueness.");
+            Some(HashSet::new())
+        }
+        (false, true) => {
+            println!("Cannot verify uniqueness without placing all entries in memory.");
+            std::process::exit(1);
+        }
+        (_, false) => {
+            eprintln!("Not verifying uniqueness");
+            None
+        }
+    };
 
     let mut file = PolyCubeFile::new(path)?;
     file.should_canonicalize = false;
     let canonical = file.canonical();
+    let len = file.len();
 
-    println!("Validating {}", path);
-
-    let read: Vec<_> = file.collect();
-
-    if let Some(e) = read.iter().find_map(|r| r.as_ref().err()) {
-        eprintln!("Error: Reading the file failed. Error: {e}.");
-        std::process::exit(1);
-    }
-
-    let success: Vec<_> = read.into_iter().filter_map(|v| v.ok()).collect();
-
-    println!("Read {} cubes from file succesfully.", success.len());
-
-    if canonical && validate_canonical {
-        println!("Verifying that provided file is canonical (header indicates that it is)...");
-
-        if let Some(_) = success.iter().find(|v| {
-            v != &&v
-                .all_rotations()
-                .max_by(PolyCube::canonical_ordering)
+    let bar = if let Some(len) = len {
+        make_bar(len as u64)
+    } else {
+        let style =
+            ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
                 .unwrap()
-        }) {
-            eprintln!(
-                "Error: Found non-canonical polycube in file that claims to contain canonical cubes."
-            );
-            std::process::exit(1);
-        }
+                .tick_strings(&[
+                    "=>--------",
+                    "<=>-------",
+                    "-<=>------",
+                    "--<=>-----",
+                    "---<=>----",
+                    "----<=>---",
+                    "-----<=>--",
+                    "------<=>-",
+                    "-------<=>",
+                    "--------<=",
+                    "-------<=>",
+                    "------<=>-",
+                    "----<=>---",
+                    "-----<=>--",
+                    "---<=>----",
+                    "--<=>-----",
+                    "-<=>------",
+                    "<=>-------",
+                    "=>--------",
+                    "----------",
+                ]);
+
+        ProgressBar::new(100).with_style(style)
+    };
+
+    let exit = |msg: &str| {
+        bar.finish();
+        println!("{msg}");
+        std::process::exit(1);
+    };
+
+    match (canonical, validate_canonical) {
+        (true, true) => eprintln!("Verifying entry canonicality. File indicates that entries are canonical."),
+        (false, true) => eprintln!("Not verifying entry canonicality. File header does not indicate that entries are canonical"),
+        (true, false) => eprintln!("Not verifying entry canonicality. File header indicates that they are, but check is disabled."),
+        (false, false) => eprintln!("Not verifying canonicality. File header does not indicate that entries are canonical, and check is disabled.")
     }
 
-    if let Some(n) = opts.n {
-        println!("Verifying that all polycubes in the file are N = {n}...");
+    if let Some(n) = n {
+        eprintln!("Verifying that all entries are N = {n}");
+    }
 
-        if let Some(v) = success.iter().find_map(|v| {
-            if v.present_cubes() != n {
-                Some(v.present_cubes())
-            } else {
-                None
+    let mut total_read = 0;
+
+    let mut last_tick = Instant::now();
+    bar.tick();
+
+    for cube in file {
+        let cube = match cube {
+            Ok(c) => c,
+            Err(e) => {
+                println!("Error: Reading the file failed. Error: {e}.");
+                std::process::exit(1);
             }
-        }) {
-            eprintln!("Error: Found a cube with N != {n}. Value: {v}");
-            std::process::exit(1);
+        };
+
+        total_read += 1;
+
+        if len.is_some() {
+            bar.inc(1);
+            bar.tick();
+        } else if last_tick.elapsed() >= Duration::from_millis(66) {
+            last_tick = Instant::now();
+            bar.set_message(format!("{total_read}"));
+            bar.inc(1);
+            bar.tick();
+        }
+
+        let canonical_form = cube
+            .all_rotations()
+            .max_by(PolyCube::canonical_ordering)
+            .unwrap();
+
+        if canonical && validate_canonical {
+            if canonical_form != cube {
+                exit(
+                    "Error: Found non-canonical polycube in file that claims to contain canonical cubes."
+                );
+            }
+        }
+
+        if let Some(n) = n {
+            let v = cube.present_cubes();
+            if v != n {
+                exit(&format!("Error: Found a cube with N != {n}. Value: {v}"));
+            }
+        }
+
+        if let Some(uniqueness) = &mut uniqueness {
+            if !uniqueness.insert(canonical_form) {
+                exit("Found non-unique polycubes.");
+            }
         }
     }
 
-    if uniqueness {
-        println!("Verifying that all polycubes in the file are unique...");
+    bar.finish();
 
-        // PolyCubeFile always spits out canonicalized polycubes
-        //
-        // TODO: typestate?
-        let canonicalized = PolyCubeFile::new(path).unwrap();
-
-        let unique: HashSet<_> = canonicalized.map(|v| v.ok()).collect();
-
-        if unique.len() != success.len() {
-            eprintln!(
-                "Unique polycubes: {}. Total polycubes: {}. File contains multiple occurences some polycubes",
-                unique.len(),
-                success.len()
-            );
-            std::process::exit(1);
-        }
-    }
-
-    println!("Validation succesful");
+    println!("Success: {path}, containing {total_read} cubes, is valid");
 
     Ok(())
 }

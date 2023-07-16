@@ -17,6 +17,24 @@ mod iterator;
 mod from_file;
 pub use from_file::PolyCubeFile;
 
+pub fn make_bar(len: u64) -> indicatif::ProgressBar {
+    use indicatif::{ProgressBar, ProgressStyle};
+
+    let bar = ProgressBar::new(len);
+
+    let pos_width = format!("{len}").len();
+
+    let template =
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+
+    bar.set_style(
+        ProgressStyle::with_template(&template)
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    bar
+}
+
 /// A polycube
 #[derive(Debug)]
 pub struct PolyCube {
@@ -454,25 +472,6 @@ impl PolyCube {
         cube_next
     }
 
-    fn make_bar(len: u64) -> indicatif::ProgressBar {
-        use indicatif::{ProgressBar, ProgressStyle};
-
-        let bar = ProgressBar::new(len);
-
-        let pos_width = format!("{len}").len();
-
-        let template = format!(
-            "[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
-        );
-
-        bar.set_style(
-            ProgressStyle::with_template(&template)
-                .unwrap()
-                .progress_chars("#>-"),
-        );
-        bar
-    }
-
     /// Obtain a list of [`PolyCube`]s representing all unique expansions of the
     /// items in `from_set`.
     ///
@@ -481,7 +480,7 @@ impl PolyCube {
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
-        let bar = Self::make_bar(from_set.len() as u64);
+        let bar = make_bar(from_set.len() as u64);
 
         let mut this_level = HashSet::new();
 
@@ -658,7 +657,7 @@ impl PolyCube {
         let chunk_size = (from_set.len() / available_parallelism) + 1;
         let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
 
-        let bar = Self::make_bar(from_set.len() as u64);
+        let bar = make_bar(from_set.len() as u64);
 
         let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
             from_set

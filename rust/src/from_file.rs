@@ -1,24 +1,85 @@
 use std::{
-    collections::HashSet,
-    io::{ErrorKind, Read},
+    fs::File,
+    io::{ErrorKind, Read, Write},
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
 };
 
 use crate::PolyCube;
 
-pub struct PolyCubeFromFileReader;
+const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
-impl PolyCubeFromFileReader {
-    pub fn from_file(path: impl AsRef<Path>) -> std::io::Result<Vec<PolyCube>> {
-        let path = path.as_ref();
+pub struct PolyCubeFileReader {
+    file: File,
+    len: Option<usize>,
+    cubes_read: usize,
+    pub should_canonicalize: bool,
+    cubes_are_canonical: bool,
+    alloc_count: Arc<AtomicUsize>,
+}
 
-        let mut file = std::fs::File::open(path)?;
+impl Iterator for PolyCubeFileReader {
+    type Item = std::io::Result<PolyCube>;
 
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if let Some(len) = self.len {
+            (len, Some(len))
+        } else {
+            (0, None)
+        }
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_cube = PolyCube::unpack_with(self.alloc_count.clone(), &mut self.file);
+
+        let mut next_cube = match (next_cube, self.len) {
+            (Err(_), None) => return None,
+            (Err(e), Some(expected)) => {
+                if expected == self.cubes_read {
+                    return None;
+                } else {
+                    let msg = format!(
+                        "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
+                        self.cubes_read
+                    );
+                    return Some(Err(std::io::Error::new(ErrorKind::InvalidData, msg)));
+                }
+            }
+            (Ok(c), _) => c,
+        };
+
+        if !self.cubes_are_canonical && self.should_canonicalize {
+            next_cube = next_cube
+                .all_rotations()
+                .max_by(PolyCube::canonical_ordering)
+                .unwrap();
+        }
+
+        self.cubes_read += 1;
+
+        Some(Ok(next_cube))
+    }
+}
+
+impl PolyCubeFileReader {
+    pub fn len(&self) -> Option<usize> {
+        self.len
+    }
+
+    pub fn canonical(&self) -> bool {
+        self.cubes_are_canonical
+    }
+
+    pub fn new(p: impl AsRef<Path>) -> std::io::Result<Self> {
+        let file = std::fs::File::open(p.as_ref())?;
+        Self::new_from_file(file)
+    }
+
+    pub fn new_from_file(mut file: File) -> std::io::Result<Self> {
         let mut magic = [0u8; 4];
         file.read_exact(&mut magic)?;
 
-        if magic != [0xCB, 0xEC, 0xCB, 0xEC] {
+        if magic != MAGIC {
             return Err(std::io::Error::new(
                 ErrorKind::InvalidData,
                 "File magic was incorrect.",
@@ -29,13 +90,7 @@ impl PolyCubeFromFileReader {
         file.read_exact(&mut header)?;
 
         let [orientation, compression] = header;
-
-        if orientation != 0 {
-            return Err(std::io::Error::new(
-                ErrorKind::Other,
-                "Only non-sorted orientation is supported",
-            ));
-        }
+        let canonicalized = orientation != 0;
 
         if compression != 0 {
             return Err(std::io::Error::new(
@@ -64,43 +119,58 @@ impl PolyCubeFromFileReader {
             }
         }
 
-        let is_stream = cube_count == 0;
-
-        if is_stream {
-            println!("Loading streamed cubes...");
+        let len = if cube_count == 0 {
+            None
         } else {
-            println!("Loading {cube_count} cubes...");
+            Some(cube_count as usize)
+        };
+
+        Ok(Self {
+            file,
+            len,
+            cubes_read: 0,
+            cubes_are_canonical: canonicalized,
+            alloc_count: Arc::new(AtomicUsize::new(0)),
+            should_canonicalize: true,
+        })
+    }
+
+    pub fn to_file<C, I>(mut cubes: I, canonical: bool, mut file: File) -> std::io::Result<()>
+    where
+        I: Iterator<Item = C>,
+        C: std::borrow::Borrow<PolyCube>,
+    {
+        file.set_len(0)?;
+
+        file.write_all(&MAGIC)?;
+
+        let compression = 0;
+        let orientation = if canonical { 1 } else { 0 };
+
+        file.write_all(&[orientation, compression])?;
+
+        let mut cube_count = 0;
+        let (min, max) = cubes.size_hint();
+
+        if Some(min) == max {
+            cube_count = min;
         }
 
-        let alloc_count = Arc::new(AtomicUsize::new(0));
-        let mut cubes = HashSet::new();
+        while cube_count > 0 {
+            let mut next_byte = (cube_count as u8) & 0x7F;
+            cube_count >>= 7;
 
-        let mut cubes_read = 0;
-        loop {
-            let next_cube = PolyCube::unpack_with(alloc_count.clone(), &mut file);
-
-            let next_cube = match next_cube {
-                Err(_) if is_stream => break,
-                Err(e) => {
-                    if cubes_read != cube_count {
-                        panic!(
-                            "Expected {cube_count} cubes, but failed to read after {cubes_read} cubes. Error: {e}"
-                        );
-                    }
-                    break;
-                }
-                Ok(c) => c,
-            };
-
-            if !cubes.insert(next_cube.clone()) {
-                println!("{next_cube}");
-                panic!("Read non-unique cube {cubes_read} from file");
+            if cube_count > 0 {
+                next_byte |= 0x80;
             }
-            cubes_read += 1;
+
+            file.write_all(&[next_byte])?;
         }
 
-        assert_eq!(cubes_read, cubes.len() as u64);
+        if let Some(e) = cubes.find_map(|v| v.borrow().pack(&mut file).err()) {
+            return Err(e);
+        }
 
-        Ok(cubes.into_iter().collect())
+        Ok(())
     }
 }

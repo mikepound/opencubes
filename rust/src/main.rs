@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -7,7 +8,7 @@ use std::{
 };
 
 use clap::Parser;
-use polycubes::PolyCube;
+use polycubes::{PolyCube, PolyCubeFileReader};
 
 #[derive(Clone, Parser)]
 pub struct Opts {
@@ -17,10 +18,15 @@ pub struct Opts {
     /// Disable parallelism.
     #[clap(long, short = 'p')]
     pub no_parallelism: bool,
+
+    /// Don't use the cache
+    #[clap(long, short = 'c')]
+    pub no_cache: bool,
 }
 
 fn unique_expansions<F>(
     mut expansion_fn: F,
+    use_cache: bool,
     alloc_tracker: Arc<AtomicUsize>,
     n: usize,
 ) -> Vec<PolyCube>
@@ -38,8 +44,57 @@ where
     let mut current = [base].to_vec();
 
     if n > 1 {
-        for i in 0..n - 1 {
-            let next = expansion_fn(i + 2, current.iter());
+        let mut calculate_from = 2;
+
+        if use_cache {
+            let mut highest = None;
+            for i in calculate_from..=n {
+                if let Ok(cache_file) = PolyCubeFileReader::new(format!("cubes_{}.pcube", i)) {
+                    highest = Some((i, cache_file));
+                }
+            }
+
+            if let Some((n, cache)) = highest {
+                println!("Found cache for N = {n}. Loading data...");
+
+                if !cache.canonical() {
+                    println!("Cached cubes are not canonical. Canonicalizing...")
+                }
+
+                let len = cache.len();
+                calculate_from = n + 1;
+                let cached: HashSet<_> = cache
+                    .filter_map(|v| match v {
+                        Ok(v) => Some(v),
+                        Err(e) => panic!("Failed to load a cube. {e}"),
+                    })
+                    .collect();
+
+                if let Some(len) = len {
+                    assert_eq!(
+                        len,
+                        cached.len(),
+                        "There were non-unique cubes in the cache."
+                    );
+                } else {
+                    panic!("Cannot determine if all cubes in the cache where unique.");
+                }
+
+                current = cached.into_iter().collect();
+
+                println!("Done!");
+            }
+        }
+
+        for i in calculate_from..=n {
+            let next = expansion_fn(i, current.iter());
+
+            if use_cache {
+                let name = &format!("cubes_{i}.pcube");
+                if !std::fs::File::open(name).is_ok() {
+                    println!("Saving data to cache");
+                }
+            }
 
             current = next;
         }
@@ -50,17 +105,10 @@ where
 
 #[allow(unreachable_code, unused)]
 fn main() {
-    let count = match std::env::args().skip(1).next() {
-        Some(count) => count,
-        None => {
-            eprintln!("Missing `count` argument.");
-            std::process::exit(1);
-        }
-    };
-
     let opts = Opts::parse();
 
     let n = opts.n;
+    let cache = !opts.no_cache;
 
     let alloc_tracker = Arc::new(AtomicUsize::new(0));
 
@@ -71,6 +119,7 @@ fn main() {
             |n, current: std::slice::Iter<'_, PolyCube>| {
                 PolyCube::unique_expansions(true, n, current)
             },
+            cache,
             alloc_tracker.clone(),
             n,
         )
@@ -79,6 +128,7 @@ fn main() {
             |n, current: std::slice::Iter<'_, PolyCube>| {
                 PolyCube::unique_expansions_rayon(true, n, current)
             },
+            cache,
             alloc_tracker.clone(),
             n,
         )

@@ -289,4 +289,9 @@ pub fn from_bytes() {
     let from_bytes = PolyCube::unpack(&*bytes).unwrap();
 
     assert_eq!(expected, from_bytes);
+
+    let mut to_bytes = Vec::new();
+    from_bytes.pack(&mut to_bytes).unwrap();
+
+    assert_eq!(bytes, to_bytes);
 }

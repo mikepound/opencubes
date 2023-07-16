@@ -3,7 +3,7 @@ mod test;
 
 use std::{
     collections::HashSet,
-    io::Read,
+    io::{Read, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 mod iterator;
 
 mod from_file;
-pub use from_file::PolyCubeFromFileReader;
+pub use from_file::PolyCubeFileReader;
 
 /// A polycube
 #[derive(Debug)]
@@ -166,6 +166,28 @@ impl PolyCube {
 
     pub fn unpack(read: impl Read) -> std::io::Result<Self> {
         Self::unpack_with(Arc::new(AtomicUsize::new(0)), read)
+    }
+
+    pub fn pack(&self, mut write: impl Write) -> std::io::Result<()> {
+        let xyz = [self.dim_1 as u8, self.dim_2 as u8, self.dim_3 as u8];
+        write.write_all(&xyz)?;
+
+        let byte_len = ((self.dim_1 * self.dim_2 * self.dim_3) + 7) / 8;
+
+        let mut out_bytes = vec![0u8; byte_len];
+
+        let mut filled = self.filled.iter();
+        out_bytes.iter_mut().for_each(|v| {
+            for s in 0..8 {
+                if let Some(true) = filled.next() {
+                    *v |= 1 << s;
+                }
+            }
+        });
+
+        write.write_all(&out_bytes)?;
+
+        Ok(())
     }
 
     /// Find the ordering between two rotated versions of the same

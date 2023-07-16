@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     io::ErrorKind,
+    path::PathBuf,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -12,12 +13,65 @@ use clap::{Args, Parser, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{make_bar, PolyCube, PolyCubeFile};
 
+fn unknown_bar() -> ProgressBar {
+    let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
+        .unwrap()
+        .tick_strings(&[
+            "=>--------",
+            "<=>-------",
+            "-<=>------",
+            "--<=>-----",
+            "---<=>----",
+            "----<=>---",
+            "-----<=>--",
+            "------<=>-",
+            "-------<=>",
+            "--------<=",
+            "-------<=>",
+            "------<=>-",
+            "----<=>---",
+            "-----<=>--",
+            "---<=>----",
+            "--<=>-----",
+            "-<=>------",
+            "<=>-------",
+            "=>--------",
+            "----------",
+        ]);
+
+    ProgressBar::new(100).with_style(style)
+}
+
 #[derive(Clone, Parser)]
 pub enum Opts {
     /// Enumerate polycubes with a specific amount of cubes present
     Enumerate(EnumerateOpts),
     /// Validate the contents of a pcube file
+    #[clap(alias = "pcube-validate")]
     Validate(ValidateArgs),
+    /// Convert the contents of a pcube file
+    #[clap(alias = "pcube-validate")]
+    Convert(ConvertArgs),
+}
+
+#[derive(Clone, Args)]
+pub struct ConvertArgs {
+    /// The path of the pcube file to convert
+    pub path: String,
+
+    /// The output compression to use
+    #[clap(long, short = 'z', value_enum, default_value = "none")]
+    pub compression: Compression,
+
+    /// Canonicalize the input polycubes
+    #[clap(long, short)]
+    pub canonicalize: bool,
+
+    /// The path to output the converted pcube file to.
+    ///
+    /// Defaults to `path`, overwriting the original once
+    /// the conversion is complete.
+    pub output_path: Option<String>,
 }
 
 #[derive(Clone, Args)]
@@ -211,33 +265,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let bar = if let Some(len) = len {
         make_bar(len as u64)
     } else {
-        let style =
-            ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
-                .unwrap()
-                .tick_strings(&[
-                    "=>--------",
-                    "<=>-------",
-                    "-<=>------",
-                    "--<=>-----",
-                    "---<=>----",
-                    "----<=>---",
-                    "-----<=>--",
-                    "------<=>-",
-                    "-------<=>",
-                    "--------<=",
-                    "-------<=>",
-                    "------<=>-",
-                    "----<=>---",
-                    "-----<=>--",
-                    "---<=>----",
-                    "--<=>-----",
-                    "-<=>------",
-                    "<=>-------",
-                    "=>--------",
-                    "----------",
-                ]);
-
-        ProgressBar::new(100).with_style(style)
+        unknown_bar()
     };
 
     let exit = |msg: &str| {
@@ -359,11 +387,98 @@ pub fn enumerate(opts: &EnumerateOpts) {
     println!("Duration: {} ms", duration.as_millis());
 }
 
+pub fn convert(opts: &ConvertArgs) {
+    let output_path = opts.output_path.as_ref().unwrap_or(&opts.path);
+
+    println!("Converting file {}", opts.path);
+    println!("Final output path: {output_path}");
+
+    let mut input_file = match PolyCubeFile::new(&opts.path) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("Failed to open input file. Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    input_file.should_canonicalize = opts.canonicalize;
+
+    if opts.canonicalize {
+        println!("Canonicalizing output");
+    }
+    println!("Input compression: {:?}", input_file.compression());
+    println!("Output compression: {:?}", opts.compression);
+
+    let canonical = input_file.canonical();
+    let len = input_file.len();
+
+    let bar = if let Some(len) = len {
+        make_bar(len as u64)
+    } else {
+        unknown_bar()
+    };
+
+    let exit = |msg: &str| -> ! {
+        bar.finish();
+        eprintln!("{msg}");
+        std::process::exit(1);
+    };
+
+    let mut output_path_temp = PathBuf::from(output_path);
+    let filename = output_path_temp.file_name().unwrap();
+    let filename = filename.to_string_lossy().to_string();
+    let filename = format!(".{filename}.tmp");
+    output_path_temp.pop();
+    output_path_temp.push(filename);
+
+    let output_file = match std::fs::File::create(&output_path_temp) {
+        Ok(f) => f,
+        Err(e) => exit(&format!("Failed to create temporary output file. {e}")),
+    };
+
+    let mut total_read = 0;
+    let mut last_tick = Instant::now();
+    bar.tick();
+    let input = input_file.filter_map(|v| {
+        total_read += 1;
+
+        if len.is_some() {
+            bar.inc(1);
+            bar.tick();
+        } else if last_tick.elapsed() >= Duration::from_millis(66) {
+            last_tick = Instant::now();
+            bar.set_message(format!("{total_read}"));
+            bar.inc(1);
+            bar.tick();
+        }
+
+        match v {
+            Ok(v) => Some(v),
+            Err(e) => exit(&format!(
+                "Failed to read all cubes from input file. Error: {e}"
+            )),
+        }
+    });
+
+    match PolyCubeFile::write(input, canonical, opts.compression.into(), output_file) {
+        Ok(_) => {}
+        Err(e) => exit(&format!("Failed. Error: {e}.")),
+    }
+
+    bar.finish();
+
+    match std::fs::rename(output_path_temp, output_path) {
+        Ok(_) => println!("Success"),
+        Err(e) => exit(&format!("Failed to write final file: {e}")),
+    }
+}
+
 fn main() {
     let opts = Opts::parse();
 
     match opts {
         Opts::Enumerate(r) => enumerate(&r),
         Opts::Validate(a) => validate(&a).unwrap(),
+        Opts::Convert(c) => convert(&c),
     }
 }

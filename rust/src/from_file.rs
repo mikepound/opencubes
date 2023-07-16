@@ -224,6 +224,13 @@ impl<T> PolyCubeFile<T>
 where
     T: Read,
 {
+    pub fn compression(&self) -> Compression {
+        match self.input {
+            Reader::Uncompressed(_) => Compression::None,
+            Reader::Gzip(_) => Compression::Gzip,
+        }
+    }
+
     pub fn len(&self) -> Option<usize> {
         self.len
     }

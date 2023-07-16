@@ -1,7 +1,7 @@
 import unittest
 from numpy.testing import assert_array_equal
 from libraries.packing import pack, unpack
-from utils import get_test_data
+from .utils import get_test_data
 
 class PackingTests(unittest.TestCase):
     def test_pack_does_not_throw(self):

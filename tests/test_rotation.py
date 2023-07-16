@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 from libraries.rotation import all_rotations
-from utils import get_test_data
+from .utils import get_test_data
 
 class RotatingTests(unittest.TestCase):
     def test_rotate_quantity(self):

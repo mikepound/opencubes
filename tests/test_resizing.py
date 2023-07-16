@@ -1,7 +1,7 @@
 import unittest
 import os
 from libraries.resizing import crop_cube, expand_cube
-from utils import get_test_data
+from .utils import get_test_data
 
 class CroppingTests(unittest.TestCase):
     #todo

@@ -2,7 +2,7 @@ import unittest
 import os
 from libraries.cache import get_cache, save_cache
 from numpy.testing import assert_array_equal
-from utils import get_test_data
+from .utils import get_test_data
 
 class CachingTests(unittest.TestCase):
 

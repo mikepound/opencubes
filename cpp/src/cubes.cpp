@@ -6,9 +6,10 @@
 #include <thread>
 
 #include "cache.hpp"
+#include "cube.hpp"
+#include "hashes.hpp"
 #include "results.hpp"
 #include "rotations.hpp"
-#include "structs.hpp"
 
 const int PERF_STEP = 500;
 
@@ -29,13 +30,9 @@ void expand(const Cube &c, Hashy &hashes) {
     for (const auto &p : c) {
         candidates.erase(p);
     }
-#ifdef DBG
-    std::printf("candidates: %lu\n\r", candidates.size());
-#endif
+    DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
     for (const auto &p : candidates) {
-#ifdef DBG
-        std::printf("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
-#endif
+        DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
         int ax = (p.x() < 0) ? 1 : 0;
         int ay = (p.y() < 0) ? 1 : 0;
         int az = (p.z() < 0) ? 1 : 0;
@@ -52,8 +49,7 @@ void expand(const Cube &c, Hashy &hashes) {
             if (nz > shape[2]) shape[2] = nz;
             newCube.emplace_back(XYZ(nx, ny, nz));
         }
-        // std::printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
-        // newCube.print();
+        DEBUG_PRINTF("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
 
         // check rotations
         Cube lowestHashCube;
@@ -73,15 +69,9 @@ void expand(const Cube &c, Hashy &hashes) {
             }
         }
         hashes.insert(std::move(lowestHashCube), lowestShape);
-#ifdef DBG
-        std::printf("=====\n\r");
-        // lowestHashCube.print();
-        std::printf("inserted! (num %2lu)\n\n\r", hashes.size());
-#endif
+        DEBUG_PRINTF("inserted! (num %2lu)\n\n\r", hashes.size());
     }
-#ifdef DBG
-    std::printf("new hashes: %lu\n\r", hashes.size());
-#endif
+    DEBUG_PRINTF("new hashes: %lu\n\r", hashes.size());
 }
 
 void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end) {

@@ -169,12 +169,12 @@ impl PolyCube {
     }
 
     pub fn pack(&self, mut write: impl Write) -> std::io::Result<()> {
-        let xyz = [self.dim_1 as u8, self.dim_2 as u8, self.dim_3 as u8];
-        write.write_all(&xyz)?;
-
         let byte_len = ((self.dim_1 * self.dim_2 * self.dim_3) + 7) / 8;
 
-        let mut out_bytes = vec![0u8; byte_len];
+        let mut out_bytes = vec![0u8; byte_len + 3];
+        out_bytes[0] = self.dim_1 as u8;
+        out_bytes[1] = self.dim_2 as u8;
+        out_bytes[2] = self.dim_3 as u8;
 
         let mut filled = self.filled.iter();
         out_bytes.iter_mut().for_each(|v| {

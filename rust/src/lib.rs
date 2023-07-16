@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod test;
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    collections::HashSet,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 mod iterator;
@@ -51,6 +54,35 @@ impl PartialEq for PolyCube {
             && self.dim_2 == other.dim_2
             && self.dim_3 == other.dim_3
             && self.filled == other.filled
+    }
+}
+
+impl Ord for PolyCube {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use core::cmp::Ordering;
+
+        match self.filled.cmp(&other.filled) {
+            Ordering::Equal => {}
+            ord => return ord,
+        }
+
+        match self.dim_1.cmp(&other.dim_1) {
+            Ordering::Equal => {}
+            ord => return ord,
+        }
+
+        match self.dim_2.cmp(&other.dim_2) {
+            Ordering::Equal => {}
+            ord => return ord,
+        }
+
+        self.dim_3.cmp(&other.dim_3)
+    }
+}
+
+impl PartialOrd for PolyCube {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -373,8 +405,6 @@ impl PolyCube {
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
-        use std::collections::HashSet;
-
         #[cfg(feature = "indicatif")]
         let bar = Self::make_bar(from_set.len());
 

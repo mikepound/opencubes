@@ -177,7 +177,7 @@ impl PolyCube {
         out_bytes[2] = self.dim_3 as u8;
 
         let mut filled = self.filled.iter();
-        out_bytes.iter_mut().for_each(|v| {
+        out_bytes.iter_mut().skip(3).for_each(|v| {
             for s in 0..8 {
                 if let Some(true) = filled.next() {
                     *v |= 1 << s;

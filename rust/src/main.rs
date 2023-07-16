@@ -141,7 +141,7 @@ where
             if use_cache {
                 let name = &format!("cubes_{i}.pcube");
                 if !std::fs::File::open(name).is_ok() {
-                    println!("Saving {} to cache file", next.len());
+                    println!("Saving {} cubes to cache file", next.len());
                     PolyCubeFile::write(next.iter(), true, std::fs::File::create(name).unwrap())
                         .unwrap();
                 }
@@ -169,7 +169,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
             Some(HashSet::new())
         }
         (false, true) => {
-            println!("Cannot verify uniqueness without placing all entries in memory.");
+            println!("Cannot verify uniqueness without placing all entries in memory. Re-run with `--no-uniqueness` enabled to run.");
             std::process::exit(1);
         }
         (_, false) => {

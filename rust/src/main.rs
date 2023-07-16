@@ -7,7 +7,7 @@ use std::{
 };
 
 use clap::Parser;
-use polycubes::{PolyCube, PolyCubeFromFileReader};
+use polycubes::PolyCube;
 
 #[derive(Clone, Parser)]
 pub struct Opts {
@@ -48,11 +48,8 @@ where
     current
 }
 
+#[allow(unreachable_code, unused)]
 fn main() {
-    PolyCubeFromFileReader::from_file("./cubes_7.pcube").unwrap();
-
-    panic!();
-
     let count = match std::env::args().skip(1).next() {
         Some(count) => count,
         None => {

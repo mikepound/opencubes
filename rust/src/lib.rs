@@ -3,6 +3,7 @@ mod test;
 
 use std::{
     collections::HashSet,
+    io::Read,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -136,6 +137,37 @@ impl PolyCube {
         (self.dim_1, self.dim_2, self.dim_3)
     }
 
+    pub fn unpack_with(
+        alloc_count: Arc<AtomicUsize>,
+        mut from: impl Read,
+    ) -> std::io::Result<Self> {
+        let mut xyz = [0u8; 3];
+        from.read_exact(&mut xyz)?;
+
+        let [d1, d2, d3] = xyz;
+        let [d1, d2, d3] = [d1 as usize, d2 as usize, d3 as usize];
+
+        let mut data = vec![0u8; ((d1 * d2 * d3) + 7) / 8];
+        from.read(&mut data)?;
+
+        let mut filled = Vec::with_capacity(d1 * d2 * d3);
+
+        data.iter().for_each(|v| {
+            for s in 0..8 {
+                let is_set = ((*v >> s) & 0x1) == 0x1;
+                if filled.capacity() != filled.len() {
+                    filled.push(is_set);
+                }
+            }
+        });
+
+        Ok(Self::new_raw(alloc_count, d1, d2, d3, filled))
+    }
+
+    pub fn unpack(read: impl Read) -> std::io::Result<Self> {
+        Self::unpack_with(Arc::new(AtomicUsize::new(0)), read)
+    }
+
     /// Find the ordering between two rotated versions of the same
     /// PolyCube.
     ///
@@ -165,9 +197,9 @@ impl PolyCube {
     /// within each dimension.
     fn offset(&self, dim_1: usize, dim_2: usize, dim_3: usize) -> Option<usize> {
         if dim_1 < self.dim_1 && dim_2 < self.dim_2 && dim_3 < self.dim_3 {
-            let d1 = dim_1;
-            let d2 = dim_2 * self.dim_2_scalar;
-            let d3 = dim_3 * self.dim_3_scalar;
+            let d1 = dim_1 * self.dim_2 * self.dim_3;
+            let d2 = dim_2 * self.dim_3;
+            let d3 = dim_3;
             let index = d1 + d2 + d3;
             Some(index)
         } else {
@@ -645,12 +677,4 @@ impl PolyCube {
 
         this_level.into_inner().into_iter().collect()
     }
-}
-
-#[test]
-pub fn testy() {
-    let one = vec![false, false, true];
-    let two = vec![false, false, true];
-
-    panic!("{:?}", one.cmp(&two));
 }

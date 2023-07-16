@@ -66,48 +66,36 @@ impl PolyCubeFromFileReader {
 
         let is_stream = cube_count == 0;
 
+        if is_stream {
+            println!("Loading streamed cubes...");
+        } else {
+            println!("Loading {cube_count} cubes...");
+        }
+
         let alloc_count = Arc::new(AtomicUsize::new(0));
         let mut cubes = HashSet::new();
 
-        let mut xyz = [0u8; 3];
         let mut cubes_read = 0;
         loop {
-            let next = file.read_exact(&mut xyz);
+            let next_cube = PolyCube::unpack_with(alloc_count.clone(), &mut file);
 
-            if next.is_err() && is_stream {
-                break;
-            } else if let Err(e) = next {
-                if cubes_read != cube_count {
-                    panic!(
-                        "Expected {cube_count} cubes, but failed to read after {cubes_read} cubes. Error: {e}"
-                    );
-                }
-            }
-
-            let [d1, d2, d3] = xyz;
-            let [d1, d2, d3] = [d1 as usize, d2 as usize, d3 as usize];
-
-            let mut data = vec![0u8; ((d1 * d2 * d3) + 7) / 8];
-            file.read(&mut data)?;
-
-            let mut filled = Vec::with_capacity(d1 * d2 * d3);
-
-            data.iter().for_each(|v| {
-                for s in (0..8).rev() {
-                    let is_set = ((*v >> s) & 0x1) == 0x1;
-                    if filled.capacity() != filled.len() {
-                        filled.push(is_set);
+            let next_cube = match next_cube {
+                Err(_) if is_stream => break,
+                Err(e) => {
+                    if cubes_read != cube_count {
+                        panic!(
+                            "Expected {cube_count} cubes, but failed to read after {cubes_read} cubes. Error: {e}"
+                        );
                     }
+                    break;
                 }
-            });
+                Ok(c) => c,
+            };
 
-            let cube = PolyCube::new_raw(alloc_count.clone(), d1, d2, d3, filled);
-
-            if let Some(cube2) = cubes.get(&cube) {
-                panic!("{cube}\n{cube2}");
+            if !cubes.insert(next_cube.clone()) {
+                println!("{next_cube}");
+                panic!("Read non-unique cube {cubes_read} from file");
             }
-
-            cubes.insert(cube);
             cubes_read += 1;
         }
 

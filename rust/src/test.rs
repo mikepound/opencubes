@@ -257,3 +257,36 @@ pub fn all_are_unique() {
 
     assert_eq!(all_rotations.len(), 24);
 }
+
+#[test]
+pub fn from_bytes() {
+    #[rustfmt::skip]
+    let expected = PolyCube::from(vec![
+        vec![
+            vec![true],
+            vec![true],
+            vec![false],
+        ],
+        vec![
+            vec![true],
+            vec![true],
+            vec![false],
+        ],
+        vec![
+            vec![false],
+            vec![true],
+            vec![false],
+        ],
+        vec![
+            vec![false],
+            vec![true],
+            vec![true],
+        ]
+    ]);
+
+    let bytes: Vec<u8> = vec![0x04, 0x03, 0x01, 0x9B, 0x0c];
+
+    let from_bytes = PolyCube::unpack(&*bytes).unwrap();
+
+    assert_eq!(expected, from_bytes);
+}

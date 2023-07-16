@@ -55,6 +55,10 @@ pub enum Opts {
 pub enum PcubeCommands {
     Validate(ValidateArgs),
     Convert(ConvertArgs),
+    Info {
+        #[clap(required = true)]
+        path: Vec<String>,
+    },
 }
 
 #[derive(Clone, Args)]
@@ -132,7 +136,7 @@ pub struct EnumerateOpts {
     pub no_cache: bool,
 
     /// Compress written cache files
-    #[clap(long, value_enum, default_value = "none")]
+    #[clap(long, short = 'z', value_enum, default_value = "none")]
     pub cache_compression: Compression,
 }
 
@@ -475,6 +479,29 @@ pub fn convert(opts: &ConvertArgs) {
     }
 }
 
+fn info(path: &str) {
+    let file = match PolyCubeFile::new(path) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("Failed to open file. {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let len = file
+        .len()
+        .map(|v| format!("{v}"))
+        .unwrap_or("Unknown (is a stream)".to_string());
+    let compression = file.compression();
+    let canonical = file.canonical().then(|| "yes").unwrap_or("no");
+
+    println!();
+    println!("Info for {path}");
+    println!("Amount of polycubes: {len}");
+    println!("Compression method: {compression:?}");
+    println!("In canonical position: {canonical}");
+}
+
 fn main() {
     let opts = Opts::parse();
 
@@ -482,5 +509,6 @@ fn main() {
         Opts::Enumerate(r) => enumerate(&r),
         Opts::Pcube(PcubeCommands::Validate(a)) => validate(&a).unwrap(),
         Opts::Pcube(PcubeCommands::Convert(c)) => convert(&c),
+        Opts::Pcube(PcubeCommands::Info { path }) => path.iter().map(String::as_str).for_each(info),
     }
 }

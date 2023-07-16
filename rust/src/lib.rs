@@ -170,7 +170,7 @@ impl PolyCube {
         let [d1, d2, d3] = [d1 as usize, d2 as usize, d3 as usize];
 
         let mut data = vec![0u8; ((d1 * d2 * d3) + 7) / 8];
-        from.read(&mut data)?;
+        from.read_exact(&mut data)?;
 
         let mut filled = Vec::with_capacity(d1 * d2 * d3);
 

@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{ErrorKind, Read, Seek, Write},
+    io::{BufReader, ErrorKind, Read, Seek, Write},
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -15,7 +15,7 @@ where
 {
     pub should_canonicalize: bool,
     had_error: bool,
-    reader: T,
+    input: BufReader<T>,
     len: Option<usize>,
     cubes_read: usize,
     cubes_are_canonical: bool,
@@ -41,7 +41,7 @@ where
             return None;
         }
 
-        let next_cube = PolyCube::unpack_with(self.alloc_count.clone(), &mut self.reader);
+        let next_cube = PolyCube::unpack_with(self.alloc_count.clone(), &mut self.input);
 
         let mut next_cube = match (next_cube, self.len) {
             (Err(_), None) => return None,
@@ -136,7 +136,9 @@ where
         self.cubes_are_canonical
     }
 
-    pub fn new_from_file(mut input: T) -> std::io::Result<Self> {
+    pub fn new_from_file(input: T) -> std::io::Result<Self> {
+        let mut input = BufReader::with_capacity(16 * 1024, input);
+
         let mut magic = [0u8; 4];
         input.read_exact(&mut magic)?;
 
@@ -187,7 +189,7 @@ where
         };
 
         Ok(Self {
-            reader: input,
+            input,
             len,
             cubes_read: 0,
             cubes_are_canonical: canonicalized,

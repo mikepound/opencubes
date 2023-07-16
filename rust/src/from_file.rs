@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufReader, ErrorKind, Read, Seek, Write},
+    io::{ErrorKind, Read, Seek, Write},
     path::Path,
     sync::{atomic::AtomicUsize, Arc},
 };
@@ -15,7 +15,7 @@ where
 {
     pub should_canonicalize: bool,
     had_error: bool,
-    reader: BufReader<T>,
+    reader: T,
     len: Option<usize>,
     cubes_read: usize,
     cubes_are_canonical: bool,
@@ -186,10 +186,8 @@ where
             Some(cube_count as usize)
         };
 
-        let reader = BufReader::with_capacity(1048576, input);
-
         Ok(Self {
-            reader,
+            reader: input,
             len,
             cubes_read: 0,
             cubes_are_canonical: canonicalized,

@@ -8,7 +8,7 @@ use std::{
 
 use polycubes::PolyCube;
 
-fn unique_expansions(alloc_tracker: Arc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
+fn unique_expansions(use_bar: bool, alloc_tracker: Arc<AtomicUsize>, n: usize) -> Vec<PolyCube> {
     if n == 0 {
         return Vec::new();
     }
@@ -21,7 +21,7 @@ fn unique_expansions(alloc_tracker: Arc<AtomicUsize>, n: usize) -> Vec<PolyCube>
 
     if n > 1 {
         for i in 0..n - 1 {
-            let next = PolyCube::unique_expansions(i + 2, current.iter());
+            let next = PolyCube::unique_expansions(use_bar, i + 2, current.iter());
 
             current = next;
         }
@@ -50,7 +50,7 @@ fn main() {
 
     let start = Instant::now();
 
-    let cubes = unique_expansions(alloc_tracker.clone(), count);
+    let cubes = unique_expansions(true, alloc_tracker.clone(), count);
 
     let duration = start.elapsed();
 

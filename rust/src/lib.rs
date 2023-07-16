@@ -372,7 +372,6 @@ impl PolyCube {
         cube_next
     }
 
-    #[cfg(feature = "indicatif")]
     fn make_bar(len: usize) -> indicatif::ProgressBar {
         use indicatif::{ProgressBar, ProgressStyle};
 
@@ -396,11 +395,10 @@ impl PolyCube {
     /// items in `from_set`.
     ///
     /// If the feature `indicatif` is enabled, this also prints a progress bar.
-    pub fn unique_expansions<'a, I>(_n: usize, from_set: I) -> Vec<PolyCube>
+    pub fn unique_expansions<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
-        #[cfg(feature = "indicatif")]
         let bar = Self::make_bar(from_set.len());
 
         let mut this_level = HashSet::new();
@@ -416,29 +414,20 @@ impl PolyCube {
                 }
             }
 
-            #[cfg(feature = "indicatif")]
-            {
+            if use_bar {
                 bar.inc(1);
 
                 // Try to avoid doing this too often
                 if iter % (this_level.len() / 100).max(100) == 0 {
-                    bar.set_message(format!(
-                        "Unique polycubes for N = {} so far: {}",
-                        _n,
-                        this_level.len()
-                    ));
+                    let len = this_level.len();
+                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
                 }
             }
         }
 
-        #[cfg(feature = "indicatif")]
-        {
-            bar.set_message(format!(
-                "Unique polycubes for N = {}: {}",
-                _n,
-                this_level.len(),
-            ));
-            bar.tick();
+        if use_bar {
+            let len = this_level.len();
+            bar.set_message(format!("Unique polycubes for N = {n}: {len}",));
             bar.finish();
         }
 

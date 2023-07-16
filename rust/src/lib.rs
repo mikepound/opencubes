@@ -9,6 +9,8 @@ use std::{
     },
 };
 
+use parking_lot::RwLock;
+
 mod iterator;
 
 /// A polycube
@@ -151,6 +153,7 @@ impl PolyCube {
         check_next!(dim_1);
         check_next!(dim_2);
         check_next!(dim_3);
+
         // I don't think this does what I expect it to do...
         self.filled.cmp(&other.filled)
     }
@@ -372,10 +375,10 @@ impl PolyCube {
         cube_next
     }
 
-    fn make_bar(len: usize) -> indicatif::ProgressBar {
+    fn make_bar(len: u64) -> indicatif::ProgressBar {
         use indicatif::{ProgressBar, ProgressStyle};
 
-        let bar = ProgressBar::new(len as u64);
+        let bar = ProgressBar::new(len);
 
         let pos_width = format!("{len}").len();
 
@@ -399,7 +402,7 @@ impl PolyCube {
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
     {
-        let bar = Self::make_bar(from_set.len());
+        let bar = Self::make_bar(from_set.len() as u64);
 
         let mut this_level = HashSet::new();
 
@@ -407,10 +410,14 @@ impl PolyCube {
         for value in from_set {
             iter += 1;
             for expansion in value.expand().map(|v| v.crop()) {
-                let missing = !expansion.all_rotations().any(|v| this_level.contains(&v));
+                let max = expansion
+                    .all_rotations()
+                    .max_by(Self::canonical_ordering)
+                    .unwrap();
+                let missing = !this_level.contains(&max);
 
                 if missing {
-                    this_level.insert(expansion);
+                    this_level.insert(max);
                 }
             }
 
@@ -427,7 +434,7 @@ impl PolyCube {
 
         if use_bar {
             let len = this_level.len();
-            bar.set_message(format!("Unique polycubes for N = {n}: {len}",));
+            bar.set_message(format!("Unique polycubes for N = {n}: {len}"));
             bar.finish();
         }
 
@@ -554,4 +561,75 @@ impl PolyCube {
 
         new_cube
     }
+}
+
+impl PolyCube {
+    pub fn unique_expansions_rayon<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<PolyCube>
+    where
+        I: Iterator<Item = &'a PolyCube> + ExactSizeIterator + Clone + Send + Sync,
+    {
+        use rayon::prelude::*;
+
+        if from_set.len() == 0 {
+            return Vec::new();
+        }
+
+        let available_parallelism = num_cpus::get();
+
+        let chunk_size = (from_set.len() / available_parallelism) + 1;
+        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
+
+        let bar = Self::make_bar(from_set.len() as u64);
+
+        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
+            from_set
+                .clone()
+                .skip(v * chunk_size)
+                .take(chunk_size)
+                .into_iter()
+        });
+
+        let this_level = RwLock::new(HashSet::new());
+
+        chunk_iterator.for_each(|v| {
+            for value in v {
+                for expansion in value.expand().map(|v| v.crop()) {
+                    let max = expansion
+                        .all_rotations()
+                        .max_by(Self::canonical_ordering)
+                        .unwrap();
+
+                    let missing = !this_level.read().contains(&max);
+
+                    if missing {
+                        this_level.write().insert(max);
+                    }
+                }
+
+                bar.inc(1);
+
+                // Try to avoid doing this too often
+                if bar.position() % (this_level.read().len() as u64 / 100).max(100) == 0 {
+                    let len = this_level.read().len();
+                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
+                }
+            }
+        });
+
+        if use_bar {
+            let len = this_level.read().len();
+            bar.set_message(format!("Unique polycubes for N = {n}: {len}",));
+            bar.finish();
+        }
+
+        this_level.into_inner().into_iter().collect()
+    }
+}
+
+#[test]
+pub fn testy() {
+    let one = vec![false, false, true];
+    let two = vec![false, false, true];
+
+    panic!("{:?}", one.cmp(&two));
 }

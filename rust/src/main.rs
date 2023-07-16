@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::{Args, Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{make_bar, PolyCube, PolyCubeFile};
 
@@ -46,11 +46,14 @@ fn unknown_bar() -> ProgressBar {
 pub enum Opts {
     /// Enumerate polycubes with a specific amount of cubes present
     Enumerate(EnumerateOpts),
-    /// Validate the contents of a pcube file
-    #[clap(alias = "pcube-validate")]
+    /// Perform operations on pcube files
+    #[clap(subcommand)]
+    Pcube(PcubeCommands),
+}
+
+#[derive(Clone, Subcommand)]
+pub enum PcubeCommands {
     Validate(ValidateArgs),
-    /// Convert the contents of a pcube file
-    #[clap(alias = "pcube-validate")]
     Convert(ConvertArgs),
 }
 
@@ -478,7 +481,7 @@ fn main() {
 
     match opts {
         Opts::Enumerate(r) => enumerate(&r),
-        Opts::Validate(a) => validate(&a).unwrap(),
-        Opts::Convert(c) => convert(&c),
+        Opts::Pcube(PcubeCommands::Validate(a)) => validate(&a).unwrap(),
+        Opts::Pcube(PcubeCommands::Convert(c)) => convert(&c),
     }
 }

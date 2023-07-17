@@ -12,3 +12,7 @@ indicatif = "0.17.5"
 num_cpus = "1.16.0"
 parking_lot = "0.12.1"
 rayon = "1.7.0"
+
+[[bin]]
+name = "opencubes"
+path = "./src/cli.rs"

@@ -12,7 +12,7 @@ use std::{
 
 use parking_lot::RwLock;
 
-mod iterator;
+mod iterators;
 
 mod from_file;
 pub use from_file::{Compression, PolyCubeFile};

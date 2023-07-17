@@ -44,7 +44,7 @@ void Cache::save(std::string path, Hashy &hashes, uint8_t n) {
     header.magic = MAGIC;
     header.n = n;
     header.numShapes = hashes.byshape.size();
-    header.numberOfXYZs = hashes.size();
+    header.numPolycubes = hashes.size();
     ofs.write((const char *)&header, sizeof(header));
 
     std::vector<XYZ> keys;
@@ -94,7 +94,7 @@ Hashy Cache::load(std::string path, uint32_t extractShape) {
     }
 #ifdef CACHE_LOAD_HEADER_ONLY
     std::printf("loading cache file \"%s\" for N = %u", path.c_str(), header.n);
-    std::printf(", %u shapes, %lu XYZs\n\r", header.numShapes, header.numberOfXYZs);
+    std::printf(", %u shapes, %lu XYZs\n\r", header.numShapes, header.numPolycubes);
 #endif
     auto cubeSize = XYZ_SIZE * header.n;
     DEBUG_PRINTF("cubeSize: %u\n\r", cubeSize);

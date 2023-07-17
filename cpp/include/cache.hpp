@@ -14,7 +14,7 @@ struct Cache {
         uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
         uint32_t n;              // we will never need 32bit but it is nicely aligned
         uint32_t numShapes;      // defines length of the shapeTable
-        uint64_t numberOfXYZs;   // total number of XYZ elements
+        uint64_t numPolycubes;   // total number of polycubes
     };
     struct ShapeEntry {
         uint8_t dim0;      // offset by -1

@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod test;
 
-mod pcube;
-pub use pcube::{Compression, PolyCubeFile};
+mod pcube_file;
+pub use pcube_file::{Compression, PolyCubeFile};
 
 mod polycube;
 pub use polycube::PolyCube;

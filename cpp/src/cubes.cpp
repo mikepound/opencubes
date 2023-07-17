@@ -96,7 +96,7 @@ void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end
     std::printf("  done took %.2f s [%7lu, %7lu]\033[0K\n\r", dt_ms / 1000.f, start, end);
 }
 
-Hashy gen(uint n, int threads, bool use_cache, bool write_cache) {
+Hashy gen(int n, int threads, bool use_cache, bool write_cache) {
     Hashy hashes;
     if (n < 1)
         return {};

@@ -1,6 +1,7 @@
 #pragma once
 #ifndef OPENCUBES_HASHES_HPP
 #define OPENCUBES_HASHES_HPP
+#include <array>
 #include <cstdio>
 #include <map>
 #include <shared_mutex>
@@ -46,7 +47,7 @@ struct Hashy {
             return set.size();
         }
     };
-    template <uint NUM>
+    template <int NUM>
     struct Subhashy {
         std::array<Subsubhashy, NUM> byhash;
 

@@ -1,19 +1,18 @@
-// #define DBG 1
+#include "cubes.hpp"
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <thread>
 
 #include "cache.hpp"
+#include "cube.hpp"
+#include "hashes.hpp"
 #include "results.hpp"
 #include "rotations.hpp"
-#include "structs.hpp"
 
 const int PERF_STEP = 500;
-
-bool USE_CACHE = 1;
-bool WRITE_CACHE = 1;
 
 void expand(const Cube &c, Hashy &hashes) {
     XYZSet candidates;
@@ -29,13 +28,9 @@ void expand(const Cube &c, Hashy &hashes) {
     for (const auto &p : c) {
         candidates.erase(p);
     }
-#ifdef DBG
-    std::printf("candidates: %lu\n\r", candidates.size());
-#endif
+    DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
     for (const auto &p : candidates) {
-#ifdef DBG
-        std::printf("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
-#endif
+        DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
         int ax = (p.x() < 0) ? 1 : 0;
         int ay = (p.y() < 0) ? 1 : 0;
         int az = (p.z() < 0) ? 1 : 0;
@@ -52,8 +47,7 @@ void expand(const Cube &c, Hashy &hashes) {
             if (nz > shape[2]) shape[2] = nz;
             newCube.emplace_back(XYZ(nx, ny, nz));
         }
-        // std::printf("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
-        // newCube.print();
+        DEBUG_PRINTF("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
 
         // check rotations
         Cube lowestHashCube;
@@ -72,16 +66,10 @@ void expand(const Cube &c, Hashy &hashes) {
                 lowestShape = res.first;
             }
         }
-        hashes.insert(std::move(lowestHashCube), lowestShape);
-#ifdef DBG
-        std::printf("=====\n\r");
-        // lowestHashCube.print();
-        std::printf("inserted! (num %2lu)\n\n\r", hashes.size());
-#endif
+        hashes.insert(lowestHashCube, lowestShape);
+        DEBUG_PRINTF("inserted! (num %2lu)\n\n\r", hashes.size());
     }
-#ifdef DBG
-    std::printf("new hashes: %lu\n\r", hashes.size());
-#endif
+    DEBUG_PRINTF("new hashes: %lu\n\r", hashes.size());
 }
 
 void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end) {
@@ -109,7 +97,7 @@ void expandPart(std::vector<Cube> &base, Hashy &hashes, size_t start, size_t end
     std::printf("  done took %.2f s [%7lu, %7lu]\033[0K\n\r", dt_ms / 1000.f, start, end);
 }
 
-Hashy gen(uint n, int threads = 1) {
+Hashy gen(int n, int threads, bool use_cache, bool write_cache) {
     Hashy hashes;
     if (n < 1)
         return {};
@@ -125,13 +113,13 @@ Hashy gen(uint n, int threads = 1) {
         return hashes;
     }
 
-    if (USE_CACHE) {
+    if (use_cache) {
         hashes = Cache::load("cubes_" + std::to_string(n) + ".bin");
 
         if (hashes.size() != 0) return hashes;
     }
 
-    auto base = gen(n - 1, threads);
+    auto base = gen(n - 1, threads, use_cache, write_cache);
     std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base.size());
     hashes.init(n);
     int count = 0;
@@ -186,28 +174,12 @@ Hashy gen(uint n, int threads = 1) {
         }
     }
     std::printf("  num cubes: %lu\n\r", hashes.size());
-    if (WRITE_CACHE) Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
-    if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1) {
+    if (write_cache) Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+    if (sizeof(results) / sizeof(results[0]) > ((uint64_t)(n - 1)) && n > 1) {
         if (results[n - 1] != hashes.size()) {
             std::printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
             std::exit(-1);
         }
     }
     return hashes;
-}
-
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        std::printf("usage: %s N [NUM_THREADS]\n\r", argv[0]);
-        std::exit(-1);
-    }
-    int n = atoi(argv[1]);
-
-    int threads = 1;
-    if (argc > 2) threads = atoi(argv[2]);
-
-    if (const char *p = getenv("USE_CACHE")) USE_CACHE = atoi(p);
-    if (const char *p = getenv("WRITE_CACHE")) WRITE_CACHE = atoi(p);
-    gen(n, threads);
-    return 0;
 }

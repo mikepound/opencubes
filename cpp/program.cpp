@@ -5,7 +5,7 @@
 
 void configure_arguments(cli::Parser& parser) {
     parser.set_required<int>("n", "cube_size", "the size of polycube to generate up to");
-    parser.set_required<int>("t", "threads", "the number of threads to use while generating");
+    parser.set_optional<int>("t", "threads", 1, "the number of threads to use while generating");
     parser.set_optional<bool>("c", "use_cache", false, "whether to load cache files");
     parser.set_optional<bool>("w", "write_cache", false, "wheather to save cache files");
 }

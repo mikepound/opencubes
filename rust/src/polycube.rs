@@ -5,6 +5,9 @@ use std::{
 
 use parking_lot::RwLock;
 
+mod expander;
+mod rotations;
+
 /// A polycube
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PolyCube {
@@ -380,7 +383,7 @@ impl PolyCube {
     /// Obtain a list of [`PolyCube`]s representing all unique expansions of the
     /// items in `from_set`.
     ///
-    /// If the feature `indicatif` is enabled, this also prints a progress bar.
+    // TODO: turn this into an iterator that yield unique expansions?
     pub fn unique_expansions<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator,
@@ -541,6 +544,7 @@ impl PolyCube {
 }
 
 impl PolyCube {
+    // TODO: turn this into an iterator that yield unique expansions?
     pub fn unique_expansions_rayon<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<PolyCube>
     where
         I: Iterator<Item = &'a PolyCube> + ExactSizeIterator + Clone + Send + Sync,

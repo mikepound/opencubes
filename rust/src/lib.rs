@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod test;
 
-mod iterators;
-
 mod pcube;
 pub use pcube::{Compression, PolyCubeFile};
 

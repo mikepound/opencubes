@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <thread>
 
@@ -174,7 +175,7 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache) {
     }
     std::printf("  num cubes: %lu\n\r", hashes.size());
     if (write_cache) Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
-    if (sizeof(results) / sizeof(results[0]) > (n - 1) && n > 1) {
+    if (sizeof(results) / sizeof(results[0]) > ((uint64_t)(n - 1)) && n > 1) {
         if (results[n - 1] != hashes.size()) {
             std::printf("ERROR: result does not equal resultstable (%lu)!\n\r", results[n - 1]);
             std::exit(-1);

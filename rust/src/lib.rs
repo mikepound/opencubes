@@ -42,8 +42,6 @@ pub struct PolyCube {
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
-    dim_2_scalar: usize,
-    dim_3_scalar: usize,
     filled: Vec<bool>,
 }
 
@@ -63,8 +61,6 @@ impl Clone for PolyCube {
             dim_1: self.dim_1.clone(),
             dim_2: self.dim_2.clone(),
             dim_3: self.dim_3.clone(),
-            dim_2_scalar: self.dim_2_scalar.clone(),
-            dim_3_scalar: self.dim_3_scalar.clone(),
             filled,
         }
     }
@@ -272,8 +268,6 @@ impl PolyCube {
             dim_1,
             dim_2,
             dim_3,
-            dim_2_scalar: dim_1,
-            dim_3_scalar: dim_1 * dim_2,
             filled,
         };
 
@@ -294,8 +288,6 @@ impl PolyCube {
             dim_1,
             dim_2,
             dim_3,
-            dim_2_scalar: dim_1,
-            dim_3_scalar: dim_1 * dim_2,
             filled,
         }
     }
@@ -316,8 +308,6 @@ impl PolyCube {
             dim_1,
             dim_2,
             dim_3,
-            dim_2_scalar: dim_1,
-            dim_3_scalar: dim_1 * dim_2,
             filled,
         }
     }
@@ -601,8 +591,6 @@ impl PolyCube {
                 dim_1: 0,
                 dim_2: 0,
                 dim_3: 0,
-                dim_2_scalar: 0,
-                dim_3_scalar: 0,
                 filled: Vec::new(),
             };
         }

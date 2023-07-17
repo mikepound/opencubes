@@ -29,13 +29,17 @@ void expand(const Cube &c, Hashy &hashes) {
         candidates.erase(p);
     }
     DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
+
+    Cube newCube;
+    Cube lowestHashCube;
+    Cube rotatedCube;
+
     for (const auto &p : candidates) {
         DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
         int ax = (p.x() < 0) ? 1 : 0;
         int ay = (p.y() < 0) ? 1 : 0;
         int az = (p.z() < 0) ? 1 : 0;
-        Cube newCube;
-        newCube.reserve(c.size() + 1);
+        newCube.empty_from(c, 1);
         newCube.emplace_back(XYZ(p.x() + ax, p.y() + ay, p.z() + az));
         XYZ shape(p.x() + ax, p.y() + ay, p.z() + az);
         for (const auto &np : c) {
@@ -49,21 +53,22 @@ void expand(const Cube &c, Hashy &hashes) {
         }
         DEBUG_PRINTF("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
 
+        rotatedCube.empty_from(newCube);
+
         // check rotations
-        Cube lowestHashCube;
         XYZ lowestShape;
         bool none_set = true;
         for (int i = 0; i < 24; ++i) {
-            auto res = Rotations::rotate(i, shape, newCube);
-            if (res.second.size() == 0) continue;  // rotation generated violating shape
-            Cube rotatedCube{std::move(res.second)};
+            auto [res, ok] = Rotations::rotate(i, shape, newCube, rotatedCube);
+            if (!ok) continue;  // rotation generated violating shape
+
             std::sort(rotatedCube.begin(), rotatedCube.end());
 
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
                 // std::printf("shape %2d %2d %2d\n\r", res.first.x(), res.first.y(), res.first.z());
-                lowestHashCube = std::move(rotatedCube);
-                lowestShape = res.first;
+                std::swap(lowestHashCube, rotatedCube);
+                lowestShape = res;
             }
         }
         hashes.insert(lowestHashCube, lowestShape);

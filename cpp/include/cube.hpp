@@ -2,8 +2,8 @@
 #ifndef OPENCUBES_CUBE_HPP
 #define OPENCUBES_CUBE_HPP
 
-#include <stdint.h>
-
+#include <algorithm>
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
@@ -50,6 +50,11 @@ struct Cube {
 
     void reserve(size_t N) { sparse.reserve(N); }
 
+    void empty_from(const Cube &c, int adjust = 0) {
+        sparse.clear();
+        sparse.reserve(c.size() + adjust);
+    }
+
     template <typename T>
     T &emplace_back(T &&p) {
         return sparse.emplace_back(std::forward<T>(p));
@@ -59,13 +64,12 @@ struct Cube {
 
     bool operator<(const Cube &b) const {
         if (size() != b.size()) return size() < b.size();
-        for (size_t i = 0; i < size(); ++i) {
-            if (sparse[i] < b.sparse[i])
-                return true;
-            else if (sparse[i] > b.sparse[i])
-                return false;
+        auto [aa, bb] = std::mismatch(begin(), end(), b.begin());
+        if (aa == end()) {
+            return false;
+        } else {
+            return *aa < *bb;
         }
-        return false;
     }
 
     void print() const {

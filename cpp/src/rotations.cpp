@@ -5,12 +5,11 @@
 
 #include "cube.hpp"
 
-std::pair<XYZ, std::vector<XYZ>> Rotations::rotate(int i, XYZ shape, const Cube &orig) {
+std::pair<XYZ, bool> Rotations::rotate(int i, XYZ shape, const Cube &orig, Cube &dest) {
     const auto L = LUT[i];
     XYZ out_shape{shape[L[0]], shape[L[1]], shape[L[2]]};
-    if (out_shape.x() > out_shape.y() || out_shape.y() > out_shape.z()) return {out_shape, {}};  // return here because violating shape
-    std::vector<XYZ> res;
-    res.reserve(orig.size());
+    if (out_shape.x() > out_shape.y() || out_shape.y() > out_shape.z()) return {out_shape, false};  // return here because violating shape
+    dest.empty_from(orig);
     for (const auto &o : orig) {
         XYZ next;
         if (L[3] < 0)
@@ -27,7 +26,7 @@ std::pair<XYZ, std::vector<XYZ>> Rotations::rotate(int i, XYZ shape, const Cube 
             next.z() = shape[L[2]] - o.data[L[2]];
         else
             next.z() = o.data[L[2]];
-        res.emplace_back(next);
+        dest.emplace_back(next);
     }
-    return {out_shape, res};
+    return {out_shape, true};
 }

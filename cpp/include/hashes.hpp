@@ -84,12 +84,6 @@ struct Hashy {
 
     template <typename CubeT>
     void insert(CubeT &&c, XYZ shape) {
-#ifdef DEBUG
-        if (byshape.find(shape) == byshape.end()) {
-            printf("ERROR! shape %d %d %d should already be in map!\n\r", shape.x(), shape.y(), shape.z());
-            exit(-1);
-        }
-#endif
         auto &set = byshape[shape];
         set.insert(std::forward<CubeT>(c));
     }

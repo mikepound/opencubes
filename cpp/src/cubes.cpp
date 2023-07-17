@@ -65,7 +65,7 @@ void expand(const Cube &c, Hashy &hashes) {
                 lowestShape = res.first;
             }
         }
-        hashes.insert(std::move(lowestHashCube), lowestShape);
+        hashes.insert(lowestHashCube, lowestShape);
         DEBUG_PRINTF("inserted! (num %2lu)\n\n\r", hashes.size());
     }
     DEBUG_PRINTF("new hashes: %lu\n\r", hashes.size());

@@ -5,17 +5,21 @@
 
 ## usage:
 ```bash
-./cubes N [NUM_THREADS]
+./cubes -n N
 ```
+options:
+```
+-t    --threads
+the number of threads to use while generating
+This parameter is optional. The default value is '1'.
 
-## environment variable:
-Cache reads can be disabled by setting USE_CACHE=0
-Cache writes ... WRITE_CACHE=0
+-c    --use_cache
+whether to load cache files
+This parameter is optional. The default value is '0'.
 
-```bash
-USE_CACHE=0 ./cubes N [NUM_THREADS]
-# and
-WRITE_CACHE=0 ./cubes N [NUM_THREADS]
+-w    --write_cache
+wheather to save cache files
+This parameter is optional. The default value is '0'.
 ```
 
 ## building (cmake)

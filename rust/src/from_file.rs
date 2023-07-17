@@ -2,7 +2,6 @@ use std::{
     fs::File,
     io::{BufReader, ErrorKind, Read, Seek, Write},
     path::Path,
-    sync::{atomic::AtomicUsize, Arc},
 };
 
 use flate2::{read::GzDecoder, write::GzEncoder};
@@ -100,7 +99,6 @@ where
     len: Option<usize>,
     cubes_read: usize,
     cubes_are_canonical: bool,
-    alloc_count: Arc<AtomicUsize>,
 }
 
 impl<T> Iterator for PolyCubeFile<T>
@@ -122,7 +120,7 @@ where
             return None;
         }
 
-        let next_cube = PolyCube::unpack_with(self.alloc_count.clone(), &mut self.input);
+        let next_cube = PolyCube::unpack(&mut self.input);
 
         let mut next_cube = match (next_cube, self.len) {
             (Err(_), None) => return None,
@@ -298,7 +296,6 @@ where
             len,
             cubes_read: 0,
             cubes_are_canonical: canonicalized,
-            alloc_count: Arc::new(AtomicUsize::new(0)),
             should_canonicalize: true,
             had_error: false,
         })

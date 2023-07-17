@@ -2,10 +2,6 @@ use std::{
     collections::HashSet,
     io::ErrorKind,
     path::PathBuf,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
     time::{Duration, Instant},
 };
 
@@ -143,7 +139,6 @@ pub struct EnumerateOpts {
 fn unique_expansions<F>(
     mut expansion_fn: F,
     use_cache: bool,
-    alloc_tracker: Arc<AtomicUsize>,
     n: usize,
     compression: Compression,
 ) -> Vec<PolyCube>
@@ -154,7 +149,7 @@ where
         return Vec::new();
     }
 
-    let mut base = PolyCube::new_with_alloc_count(alloc_tracker.clone(), 1, 1, 1);
+    let mut base = PolyCube::new(1, 1, 1);
 
     base.set(0, 0, 0).unwrap();
 
@@ -358,8 +353,6 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
 
-    let alloc_tracker = Arc::new(AtomicUsize::new(0));
-
     let start = Instant::now();
 
     let cubes = if opts.no_parallelism {
@@ -368,7 +361,6 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 PolyCube::unique_expansions(true, n, current)
             },
             cache,
-            alloc_tracker.clone(),
             n,
             opts.cache_compression,
         )
@@ -378,7 +370,6 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 PolyCube::unique_expansions_rayon(true, n, current)
             },
             cache,
-            alloc_tracker.clone(),
             n,
             opts.cache_compression,
         )
@@ -387,9 +378,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let duration = start.elapsed();
 
     let cubes = cubes.len();
-    let allocations = alloc_tracker.load(Ordering::Relaxed);
 
-    println!("Unique polycubes found for N = {n}: {cubes}, Total allocations: {allocations}",);
+    println!("Unique polycubes found for N = {n}: {cubes}.",);
     println!("Duration: {} ms", duration.as_millis());
 }
 

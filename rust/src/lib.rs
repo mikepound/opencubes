@@ -4,10 +4,6 @@ mod test;
 use std::{
     collections::HashSet,
     io::{Read, Write},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
 };
 
 use parking_lot::RwLock;
@@ -36,57 +32,12 @@ pub fn make_bar(len: u64) -> indicatif::ProgressBar {
 }
 
 /// A polycube
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PolyCube {
-    alloc_count: Arc<AtomicUsize>,
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
     filled: Vec<bool>,
-}
-
-impl Clone for PolyCube {
-    fn clone(&self) -> Self {
-        // If `filled` is empty, cloning the vector is unnecessary.
-        // We can avoid an allocation by just creating a `new` Vec instead.
-        let filled = if !self.filled.is_empty() {
-            self.increase_alloc_count();
-            self.filled.clone()
-        } else {
-            Vec::new()
-        };
-
-        Self {
-            alloc_count: self.alloc_count.clone(),
-            dim_1: self.dim_1.clone(),
-            dim_2: self.dim_2.clone(),
-            dim_3: self.dim_3.clone(),
-            filled,
-        }
-    }
-}
-
-impl Eq for PolyCube {}
-
-impl PartialEq for PolyCube {
-    fn eq(&self, other: &Self) -> bool {
-        self.dim_1 == other.dim_1
-            && self.dim_2 == other.dim_2
-            && self.dim_3 == other.dim_3
-            && self.filled == other.filled
-    }
-}
-
-impl std::hash::Hash for PolyCube {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // For hashing purposes we do not care about the allocation tracker,
-        // as that is only interesting metadata to look at and it does not
-        // describe the actual state of the PolyCube.
-        self.dim_1.hash(state);
-        self.dim_2.hash(state);
-        self.dim_3.hash(state);
-        self.filled.hash(state);
-    }
 }
 
 impl core::fmt::Display for PolyCube {
@@ -155,10 +106,7 @@ impl PolyCube {
         self.filled.iter().filter(|v| **v).count()
     }
 
-    pub fn unpack_with(
-        alloc_count: Arc<AtomicUsize>,
-        mut from: impl Read,
-    ) -> std::io::Result<Self> {
+    pub fn unpack(mut from: impl Read) -> std::io::Result<Self> {
         let mut xyz = [0u8; 3];
         from.read_exact(&mut xyz)?;
 
@@ -179,11 +127,7 @@ impl PolyCube {
             }
         });
 
-        Ok(Self::new_raw(alloc_count, d1, d2, d3, filled))
-    }
-
-    pub fn unpack(read: impl Read) -> std::io::Result<Self> {
-        Self::unpack_with(Arc::new(AtomicUsize::new(0)), read)
+        Ok(Self::new_raw(d1, d2, d3, filled))
     }
 
     pub fn pack(&self, mut write: impl Write) -> std::io::Result<()> {
@@ -247,55 +191,29 @@ impl PolyCube {
         }
     }
 
-    /// Inrease the allocation count
-    fn increase_alloc_count(&self) {
-        self.alloc_count.fetch_add(1, Ordering::Relaxed);
-    }
-
     /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)`, and
     /// using `alloc_count` to keep track of the amount of [`PolyCube`]s that
     /// are allocated.
-    pub fn new_with_alloc_count(
-        alloc_count: Arc<AtomicUsize>,
-        dim_1: usize,
-        dim_2: usize,
-        dim_3: usize,
-    ) -> Self {
+    pub fn new_with_alloc_count(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
         let me = Self {
-            alloc_count,
             dim_1,
             dim_2,
             dim_3,
             filled,
         };
 
-        me.increase_alloc_count();
-
         me
     }
 
-    pub fn new_raw(
-        alloc_count: Arc<AtomicUsize>,
-        dim_1: usize,
-        dim_2: usize,
-        dim_3: usize,
-        filled: Vec<bool>,
-    ) -> Self {
+    pub fn new_raw(dim_1: usize, dim_2: usize, dim_3: usize, filled: Vec<bool>) -> Self {
         Self {
-            alloc_count,
             dim_1,
             dim_2,
             dim_3,
             filled,
         }
-    }
-
-    /// Get the amount of allocations that have been
-    /// performed by this [`PolyCube`]
-    pub fn alloc_count(&self) -> usize {
-        self.alloc_count.load(Ordering::Relaxed)
     }
 
     /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)` and
@@ -304,7 +222,6 @@ impl PolyCube {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
         Self {
-            alloc_count: Arc::new(AtomicUsize::new(0)),
             dim_1,
             dim_2,
             dim_3,
@@ -471,12 +388,7 @@ impl PolyCube {
     /// Create a new [`PolyCube`] that has an extra box-space on all sides
     /// of the polycube.
     pub fn pad_one(&self) -> PolyCube {
-        let mut cube_next = PolyCube::new_with_alloc_count(
-            self.alloc_count.clone(),
-            self.dim_1 + 2,
-            self.dim_2 + 2,
-            self.dim_3 + 2,
-        );
+        let mut cube_next = PolyCube::new(self.dim_1 + 2, self.dim_2 + 2, self.dim_3 + 2);
 
         for d1 in 0..self.dim_1 {
             for d2 in 0..self.dim_2 {
@@ -614,9 +526,6 @@ impl PolyCube {
         // which means that there are no boxes present in this polycube, at all.
         if d1_left == self.dim_1 {
             return PolyCube {
-                // NOTE: this doesn't increase allocation count, since
-                // Vec::new() does not allocate for size 0.
-                alloc_count: self.alloc_count.clone(),
                 dim_1: 0,
                 dim_2: 0,
                 dim_3: 0,
@@ -634,8 +543,7 @@ impl PolyCube {
         let d3_left = direction!(0..self.dim_3, self.dim_1, self.dim_2, d3_first);
         let d3_right = direction!((0..self.dim_3).rev(), self.dim_1, self.dim_2, d3_first);
 
-        let mut new_cube = PolyCube::new_with_alloc_count(
-            self.alloc_count.clone(),
+        let mut new_cube = PolyCube::new(
             self.dim_1 - d1_left - d1_right,
             self.dim_2 - d2_left - d2_right,
             self.dim_3 - d3_left - d3_right,

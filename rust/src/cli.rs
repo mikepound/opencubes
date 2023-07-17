@@ -9,6 +9,10 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{make_bar, PolyCube, PolyCubeFile};
 
+mod pointlist;
+mod opti_bit_set;
+mod rotations;
+
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
         .unwrap()
@@ -45,6 +49,34 @@ pub enum Opts {
     /// Perform operations on pcube files
     #[clap(subcommand)]
     Pcube(PcubeCommands),
+}
+
+#[derive(Clone, Args)]
+pub struct EnumerateOpts {
+    /// The N value for which to calculate all unique polycubes.
+    pub n: usize,
+
+    /// Disable parallelism.
+    #[clap(long, short = 'p')]
+    pub no_parallelism: bool,
+
+    /// Don't use the cache
+    #[clap(long, short = 'c')]
+    pub no_cache: bool,
+
+    /// Compress written cache files
+    #[clap(long, short = 'z', value_enum, default_value = "none")]
+    pub cache_compression: Compression,
+
+    #[clap(long, short = 'm', value_enum, default_value = "standard")]
+    pub mode: EnumerationMode,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum EnumerationMode {
+    Standard,
+    RotationReduced,
+    PointList,
 }
 
 #[derive(Clone, Subcommand)]
@@ -368,6 +400,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let start = Instant::now();
 
+<<<<<<< HEAD:rust/src/cli.rs
     let cubes = if opts.no_parallelism {
         unique_expansions(
             |n, current: std::slice::Iter<'_, PolyCube>| {
@@ -386,6 +419,40 @@ pub fn enumerate(opts: &EnumerateOpts) {
             n,
             opts.cache_compression,
         )
+=======
+    //Select enumeration function to run
+    let cubes = match (opts.mode, opts.no_parallelism) {
+        (EnumerationMode::Standard, true) => {
+            unique_expansions(
+                |n, current: std::slice::Iter<'_, PolyCube>| {
+                    PolyCube::unique_expansions(true, n, current)
+                },
+                cache,
+                alloc_tracker.clone(),
+                n,
+                opts.cache_compression,
+            )
+                
+        }
+        (EnumerationMode::Standard, false) => {
+            unique_expansions(
+                |n, current: std::slice::Iter<'_, PolyCube>| {
+                    PolyCube::unique_expansions_rayon(true, n, current)
+                },
+                cache,
+                alloc_tracker.clone(),
+                n,
+                opts.cache_compression,
+            )
+        }
+        (EnumerationMode::RotationReduced, true) => {
+            //opti_bit_set::gen_polycubes(n)
+            todo!()
+        },
+        (EnumerationMode::RotationReduced, false) => todo!(),
+        (EnumerationMode::PointList, true) => todo!(),
+        (EnumerationMode::PointList, false) => todo!(),
+>>>>>>> 11b716d (save merge progress for rebase):rust/src/main.rs
     };
 
     let duration = start.elapsed();

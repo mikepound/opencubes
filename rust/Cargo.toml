@@ -3,6 +3,13 @@ name = "opencubes"
 version = "0.1.0"
 edition = "2021"
 
+#feature flags to enable and disable features at compile time
+
+[features]
+diagnostics = []
+size16 = []
+smallset = []
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -12,6 +19,7 @@ indicatif = "0.17.5"
 num_cpus = "1.16.0"
 parking_lot = "0.12.1"
 rayon = "1.7.0"
+hashbrown = { version = "0.14", features = ["rayon"] }
 
 [[bin]]
 name = "opencubes"

@@ -48,7 +48,7 @@ pub fn from_vec3d() {
 
 #[test]
 fn flip_0() {
-    let cube = test_cube();
+    let mut cube = test_cube();
 
     #[rustfmt::skip]
     let expected = PolyCube::from(vec![
@@ -64,12 +64,14 @@ fn flip_0() {
         ],
     ]);
 
-    assert_eq!(cube.flip(0), expected);
+    cube.flip(0);
+
+    assert_eq!(cube, expected);
 }
 
 #[test]
 fn flip_1() {
-    let cube = test_cube();
+    let mut cube = test_cube();
 
     #[rustfmt::skip]
     let expected = PolyCube::from(vec![
@@ -85,12 +87,14 @@ fn flip_1() {
         ],
     ]);
 
-    assert_eq!(cube.flip(1), expected);
+    cube.flip(1);
+
+    assert_eq!(cube, expected);
 }
 
 #[test]
 fn flip_2() {
-    let cube = test_cube();
+    let mut cube = test_cube();
 
     #[rustfmt::skip]
     let expected = PolyCube::from(vec![
@@ -106,13 +110,15 @@ fn flip_2() {
         ]
     ]);
 
-    assert_eq!(cube.flip(2), expected);
+    cube.flip(2);
+
+    assert_eq!(cube, expected);
 }
 
 #[test]
 #[should_panic]
 fn flip_3() {
-    let cube = test_cube();
+    let mut cube = test_cube();
 
     cube.flip(3);
 }

@@ -338,7 +338,7 @@ impl PolyCube {
     }
 
     /// Create a new [`PolyCube`], representing `self` rotated `k` times in the plane indicated by `a1` and `a2`.
-    pub fn rot90(self, k: usize, (a1, a2): (usize, usize)) -> PolyCube {
+    pub fn rot90(mut self, k: usize, (a1, a2): (usize, usize)) -> PolyCube {
         assert!(a1 <= 2, "a1 must be <= 2");
         assert!(a2 <= 2, "a2 must be <= 2");
 
@@ -349,7 +349,9 @@ impl PolyCube {
         }
 
         if k == 2 {
-            return self.flip(a1).flip(a2);
+            self.flip(a1);
+            self.flip(a2);
+            return self;
         }
 
         let mut axes: [usize; 3] = [0, 1, 2];
@@ -358,10 +360,13 @@ impl PolyCube {
         axes[a2] = saved;
 
         if k == 1 {
-            self.flip(a2).transpose(axes[0], axes[1], axes[2])
+            self.flip(a2);
+            self.transpose(axes[0], axes[1], axes[2])
         } else {
             // k == 3
-            self.transpose(axes[0], axes[1], axes[2]).flip(a2)
+            let mut transposed = self.transpose(axes[0], axes[1], axes[2]);
+            transposed.flip(a2);
+            transposed
         }
     }
 
@@ -404,39 +409,63 @@ impl PolyCube {
     }
 
     /// Create a new [`PolyCube`], representing `self` flipped along `axis`.
-    pub fn flip(&self, axis: usize) -> PolyCube {
+    pub fn flip(&mut self, axis: usize) {
         assert!(axis <= 2, "Axis must be <= 2");
 
-        let mut new_cube = PolyCube::new_with_alloc_count(
-            self.alloc_count.clone(),
-            self.dim_1,
-            self.dim_2,
-            self.dim_3,
-        );
+        let d1_len = self.dim_2 * self.dim_3;
+        let d2_len = self.dim_3;
+        let mut cache = [false; 256];
 
-        macro_rules! flip {
-            ($flipped_idx:expr) => {
-                for d1 in 0..self.dim_1 {
-                    for d2 in 0..self.dim_2 {
-                        for d3 in 0..self.dim_3 {
-                            let idx_1 = self.offset(d1, d2, d3).unwrap();
-                            let idx_2 = $flipped_idx(d1, d2, d3).unwrap();
+        match axis {
+            0 => {
+                for from in 0..self.dim_1 / 2 {
+                    let from_start = from * d1_len;
+                    let from_end = (from + 1) * d1_len;
 
-                            new_cube.filled[idx_2] = self.filled[idx_1];
+                    let to_start = (self.dim_1 - from - 1) * d1_len;
+                    let to_end = (self.dim_1 - from) * d1_len;
+
+                    cache[..d1_len].copy_from_slice(&self.filled[from_start..from_end]);
+                    self.filled.copy_within(to_start..to_end, from_start);
+                    self.filled[to_start..to_end].copy_from_slice(&cache[0..d1_len]);
+                }
+            }
+            1 => {
+                let d1_range = 0..self.dim_1;
+
+                for d1 in d1_range.map(|v| v * d1_len) {
+                    for from in 0..self.dim_2 / 2 {
+                        let from_start = d1 + from * d2_len;
+                        let from_end = d1 + (from + 1) * d2_len;
+
+                        let to_start = d1 + (self.dim_2 - from - 1) * d2_len;
+                        let to_end = d1 + (self.dim_2 - from) * d2_len;
+
+                        cache[0..d2_len].copy_from_slice(&self.filled[from_start..from_end]);
+                        self.filled.copy_within(to_start..to_end, from_start);
+                        self.filled[to_start..to_end].copy_from_slice(&cache[..d2_len]);
+                    }
+                }
+            }
+            2 => {
+                let d1_range = 0..self.dim_1;
+                let d2_range = 0..self.dim_2;
+
+                for d1 in d1_range.map(|v| v * d1_len) {
+                    for d2 in d2_range.clone().map(|v| v * d2_len) {
+                        for d3 in 0..self.dim_3 / 2 {
+                            let from = d1 + d2 + d3;
+                            let to = (d1 + d2 + self.dim_3) - d3 - 1;
+
+                            let stored = self.filled[from];
+                            self.filled[from] = self.filled[to];
+                            self.filled[to] = stored;
                         }
                     }
                 }
-            };
-        }
-
-        match axis {
-            0 => flip!(|d1, d2, d3| self.offset(self.dim_1 - d1 - 1, d2, d3)),
-            1 => flip!(|d1, d2, d3| self.offset(d1, self.dim_2 - d2 - 1, d3)),
-            2 => flip!(|d1, d2, d3| self.offset(d1, d2, self.dim_3 - d3 - 1)),
+            }
             _ => unreachable!(),
         }
-
-        new_cube
     }
 
     /// Create a new [`PolyCube`] that has an extra box-space on all sides

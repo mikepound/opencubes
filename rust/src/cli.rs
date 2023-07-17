@@ -308,28 +308,29 @@ where
 
                 let mut error = None;
                 let mut total_loaded = 0;
-                let cached: HashSet<_> = cache
-                    .filter_map(|v| {
-                        total_loaded += 1;
-                        match v {
-                            Ok(v) => Some(v),
-                            Err(e) => {
-                                error = Some(e);
-                                None
-                            }
+
+                let filter = |value| {
+                    total_loaded += 1;
+                    match value {
+                        Ok(v) => Some(v),
+                        Err(e) => {
+                            error = Some(e);
+                            None
                         }
-                    })
-                    .collect();
+                    }
+                };
 
-                let total_len = len.unwrap_or(total_loaded);
-
-                if total_len != cached.len() {
-                    println!("There were non-unique cubes in the cache file. Continuing...")
-                }
+                let cached: HashSet<_> = cache.filter_map(filter).collect();
 
                 if let Some(e) = error {
                     println!("Error occured while loading {name}. Error: {e}");
                 } else {
+                    let total_len = len.unwrap_or(total_loaded);
+
+                    if total_len != cached.len() {
+                        println!("There were non-unique cubes in the cache file. Continuing...")
+                    }
+
                     current = cached.into_iter().collect();
                     break;
                 }

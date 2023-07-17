@@ -20,18 +20,19 @@ impl ExpansionIterator {
     ///
     /// Returns `true` if we're done iterating
     fn go_to_next(&mut self) -> bool {
-        if self.dim_1 == self.padded_cube.dim_1 - 1 && self.dim_2 == self.padded_cube.dim_2 - 1 {
+        let (d1, d2, d3) = self.padded_cube.dims();
+        if self.dim_1 == d1 - 1 && self.dim_2 == d2 - 1 {
             self.dim_1 = 1;
             self.dim_2 = 1;
             self.dim_3 += 1;
-        } else if self.dim_1 == self.padded_cube.dim_1 - 1 {
+        } else if self.dim_1 == d1 - 1 {
             self.dim_1 = 1;
             self.dim_2 += 1;
         } else {
             self.dim_1 += 1;
         }
 
-        self.dim_3 == self.padded_cube.dim_3 - 1
+        self.dim_3 == d3 - 1
     }
 
     fn faces(d1: usize, d2: usize, d3: usize) -> std::array::IntoIter<(usize, usize, usize), 6> {

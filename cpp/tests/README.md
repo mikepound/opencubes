@@ -1,5 +1,7 @@
 # Requirements
-before you can run these you need to activate the google tests sub module:
+To run these tests first build them, then run the executable produced.
 ```
-git submodule update --init --recursive 
+cmake .
+make
+./cubes_tests
 ```

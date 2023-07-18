@@ -7,8 +7,6 @@ use std::{
 mod raw_pcube;
 pub use raw_pcube::RawPCube;
 
-mod traits;
-
 mod compression;
 pub use compression::Compression;
 use compression::{Reader, Writer};

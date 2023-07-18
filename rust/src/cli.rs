@@ -300,7 +300,7 @@ where
         let mut calculate_from = 2;
 
         if use_cache {
-            for n in (calculate_from..=n).rev() {
+            for n in (calculate_from..n).rev() {
                 let name = format!("cubes_{n}.pcube");
                 let cache = if let Some(file) = load_cache_file(n) {
                     file
@@ -379,6 +379,8 @@ where
                         name,
                     )
                     .unwrap();
+                } else {
+                    println!("Cache file already exists for N = {i}. Not overwriting.");
                 }
             }
 

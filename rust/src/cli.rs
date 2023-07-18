@@ -244,7 +244,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
 
         let mut form: Option<NaivePolyCube> = None;
-        let canonical_form = || cube.canonical_form();
+        let canonical_form = || cube.pcube_canonical_form();
 
         if canonical && validate_canonical {
             if form.get_or_insert_with(|| canonical_form()) != &cube {
@@ -388,7 +388,7 @@ where
                 if !std::fs::File::open(name).is_ok() {
                     println!("Saving {} cubes to cache file", next.len());
                     PCubeFile::write_file(
-                        true,
+                        false,
                         compression.into(),
                         next.iter().map(Into::into),
                         name,

@@ -143,6 +143,15 @@ impl NaivePolyCube {
             .unwrap()
     }
 
+    /// Find the PCube-file canonical form of this PolyCube.
+    pub fn pcube_canonical_form(&self) -> Self {
+        self.all_rotations()
+            .map(RawPCube::from)
+            .max_by(RawPCube::canonical_cmp)
+            .map(Into::into)
+            .unwrap()
+    }
+
     /// Calculate the offset into `self.filled` using the provided offsets
     /// within each dimension.
     fn offset(&self, dim_1: usize, dim_2: usize, dim_3: usize) -> Option<usize> {

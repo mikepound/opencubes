@@ -1,3 +1,4 @@
+use core::cmp::Ordering;
 use std::io::{Read, Write};
 
 /// A PolyCube read directly from a pcube file.
@@ -10,6 +11,24 @@ pub struct RawPCube {
 }
 
 impl RawPCube {
+    /// Compare two [`RawPCube`] of the same form in different
+    /// rotations to determine their canonical ordering.
+    pub fn canonical_cmp(&self, other: &Self) -> Ordering {
+        if self.dim_1.cmp(&other.dim_1) == Ordering::Greater {
+            return Ordering::Greater;
+        }
+
+        if self.dim_2.cmp(&other.dim_2) == Ordering::Greater {
+            return Ordering::Greater;
+        }
+
+        if self.dim_3.cmp(&other.dim_3) == Ordering::Greater {
+            return Ordering::Greater;
+        }
+
+        self.data.cmp(&other.data)
+    }
+
     pub fn dims(&self) -> (u8, u8, u8) {
         (self.dim_1, self.dim_2, self.dim_3)
     }

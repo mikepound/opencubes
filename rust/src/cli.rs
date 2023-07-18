@@ -361,7 +361,7 @@ where
             let next = expansion_fn(&bar, current.iter());
 
             bar.set_message(format!(
-                "Found {} unique expansions in {} ms.",
+                "Found {} unique expansions (N = {i}) in {} ms.",
                 next.len(),
                 start.elapsed().as_millis(),
             ));

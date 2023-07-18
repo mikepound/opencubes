@@ -9,6 +9,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{make_bar, PolyCube, PolyCubeFile};
 
+mod polycube_reps;
 mod pointlist;
 mod opti_bit_set;
 mod rotations;

@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use crate::{opti_bit_set::{CubeMap, CubeRow}, pointlist::{CubeMapPos, Dim}};
+use crate::polycube_reps::{CubeMap, CubeRow, CubeMapPos, Dim};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum MatrixCol {

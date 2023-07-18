@@ -1,37 +1,9 @@
-use std::{time::Instant, cmp::max, sync::Mutex, hash::Hash};
+use std::{time::Instant, cmp::max, sync::Mutex};
 
-use crate::rotations::{MatrixCol, rot_matrix_points, to_min_rot_points};
+use crate::{rotations::{MatrixCol, rot_matrix_points, to_min_rot_points}, polycube_reps::{Dim, CubeMapPos, CubeMapPosPart}};
 
 use hashbrown::{HashSet, HashMap};
 use rayon::prelude::*;
-
-/// Polycube representation
-/// stores up to 16 blocks (number of cubes normally implicit or seperate in program state)
-/// well formed polycubes are a sorted list of coordinates low to high
-/// cordinates are group of packed 5 bit unsigned integers '-ZZZZZYYYYYXXXXX'
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
-pub struct CubeMapPos {
-    pub cubes: [u16; 16]
-}
-
-/// Partial Polycube representation for storage
-/// the first block is stored seperately and used as a key to access the set
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
-struct CubeMapPosPart {
-    cubes: [u16; 15]
-}
-
-/// the "Dimension" or "Shape" of a poly cube
-/// defines the maximum bounds of a polycube
-/// X >= Y >= Z for efficiency reasons reducing the number of rotations needing to be performed
-/// stores len() - 1 for each dimension so the unit cube has a size of (0, 0, 0)
-/// and the 2x1x1 starting seed has a dimension of (1, 0, 0)
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
-pub struct Dim {
-    pub x: usize,
-    pub y: usize,
-    pub z: usize,
-}
 
 ///structure to store the polycubes
 /// stores the key and fist block index as a key

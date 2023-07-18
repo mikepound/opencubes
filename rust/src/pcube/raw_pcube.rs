@@ -92,10 +92,10 @@ impl core::fmt::Display for RawPCube {
         }
         xy.push('\n');
 
-        for x in 0..self.dim_1 {
+        for z in 0..self.dim_1 {
             for y in 0..self.dim_2 {
-                for z in 0..self.dim_3 {
-                    if self.get(x, y, z) {
+                for x in 0..self.dim_3 {
+                    if self.get(z, y, x) {
                         xy.push('1');
                     } else {
                         xy.push('0');
@@ -116,41 +116,103 @@ impl core::fmt::Display for RawPCube {
 
 #[test]
 pub fn from_bytes() {
+    let data = [0x9B, 0x0c, 0xFF, 0x00, 0x33, 0xAB, 0xBA, 0x00];
+
     let expected = RawPCube {
         dim_1: 4,
         dim_2: 3,
-        dim_3: 3,
-        data: vec![0x9B, 0x0C, 0x0A, 0x0B, 0x0C],
+        dim_3: 5,
+        data: data.to_vec(),
     };
 
+    let input_data: Vec<_> = [0x04, 0x03, 0x05]
+        .into_iter()
+        .chain(data.into_iter())
+        .collect();
+
+    let cube = RawPCube::unpack(&*input_data).unwrap();
+
+    println!("{}", cube);
+
+    assert_eq!(expected, cube);
+
     macro_rules! assert_set {
-        ($(($x:literal, $y:literal, $z:literal)),*) => {
+        ([
+            $([
+                $([
+                    $($v:literal$(,)?)*
+                ],)*
+            ])*
+        ]) => {
+            #[allow(unused_assignments)]
+            {
+            let mut d1 = 0;
+            let mut d2 = 0;
+            let mut d3 = 0;
             $(
-                assert!(expected.get($x, $y, $z));
+                $(
+                    $(
+                        let v = cube.get(d1, d2, d3) as u8;
+                        assert_eq!(v, $v, "{d1}, {d2}, {d3}");
+                        d3 += 1;
+                    )*
+                    d2 += 1;
+                    d3 = 0;
+                )*
+                d1 += 1;
+                d2 = 0;
+                d3 = 0;
             )*
+            }
         };
     }
 
-    println!("{expected}");
+    /*
+       -----
+       11011
+       00100
+       11000
+       -----
+       01111
+       11110
+       00000
+       -----
+       00110
+       01100
+       11010
+       -----
+       10101
+       01110
+       10000
+       -----
+    */
 
-    assert_set!(
-        (0, 0, 0),
-        (0, 1, 0),
-        (0, 0, 1),
-        (0, 1, 1),
-        (0, 1, 2),
-        (0, 1, 3),
-        (0, 2, 3)
-    );
+    assert_set!([
+        [
+            [1, 1, 0, 1, 1],
+            [0, 0, 1, 0, 0],
+            [1, 1, 0, 0, 0],
+        ]
+        [
+            [0, 1, 1, 1, 1],
+            [1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0],
+        ]
+        [
+            [0, 0, 1, 1, 0],
+            [0, 1, 1, 0, 0],
+            [1, 1, 0, 1, 0],
+        ]
+        [
+            [1, 0, 1, 0, 1],
+            [0, 1, 1, 1, 0],
+            [1, 0, 0, 0, 0],
+        ]
+    ]);
 
-    let bytes: Vec<u8> = vec![0x04, 0x03, 0x01, 0x9B, 0x0c];
+    let mut out = Vec::new();
 
-    let from_bytes = RawPCube::unpack(&*bytes).unwrap();
+    cube.pack(&mut out).unwrap();
 
-    assert_eq!(expected, from_bytes);
-
-    let mut to_bytes = Vec::new();
-    from_bytes.pack(&mut to_bytes).unwrap();
-
-    assert_eq!(bytes, to_bytes);
+    assert_eq!(out, input_data);
 }

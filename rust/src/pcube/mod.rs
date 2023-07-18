@@ -256,14 +256,14 @@ impl PCubeFile {
     {
         let mut file = std::fs::File::create(path.as_ref())?;
 
-        file.seek(std::io::SeekFrom::Start(0))?;
         file.set_len(0)?;
+        file.seek(std::io::SeekFrom::Start(0))?;
         file.write_all(&[0, 0, 0, 0])?;
 
         Self::write_impl(false, cubes, is_canonical, compression, &mut file)?;
 
         // Write magic last
-        file.set_len(0)?;
+        file.seek(std::io::SeekFrom::Start(0))?;
         file.write_all(&MAGIC)?;
 
         Ok(())

@@ -9,14 +9,14 @@ mod rotations;
 
 /// A polycube
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct BasicPolyCube {
+pub struct NaivePolyCube {
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
     filled: Vec<bool>,
 }
 
-impl From<RawPCube> for BasicPolyCube {
+impl From<RawPCube> for NaivePolyCube {
     fn from(value: RawPCube) -> Self {
         let (d1, d2, d3) = value.dims();
         let (dim_1, dim_2, dim_3) = (d1 as usize, d2 as usize, d3 as usize);
@@ -41,8 +41,8 @@ impl From<RawPCube> for BasicPolyCube {
     }
 }
 
-impl From<&'_ BasicPolyCube> for RawPCube {
-    fn from(value: &'_ BasicPolyCube) -> Self {
+impl From<&'_ NaivePolyCube> for RawPCube {
+    fn from(value: &'_ NaivePolyCube) -> Self {
         let byte_len = ((value.dim_1 * value.dim_2 * value.dim_3) + 7) / 8;
 
         let mut filled = value.filled.iter();
@@ -67,8 +67,8 @@ impl From<&'_ BasicPolyCube> for RawPCube {
     }
 }
 
-impl From<BasicPolyCube> for RawPCube {
-    fn from(value: BasicPolyCube) -> Self {
+impl From<NaivePolyCube> for RawPCube {
+    fn from(value: NaivePolyCube) -> Self {
         Self::from(&value)
     }
 }
@@ -76,13 +76,13 @@ impl From<BasicPolyCube> for RawPCube {
 /// Creating a new polycube from a triple-nested vector
 /// is convenient if/when you're writing them out
 /// by hand.
-impl From<Vec<Vec<Vec<bool>>>> for BasicPolyCube {
+impl From<Vec<Vec<Vec<bool>>>> for NaivePolyCube {
     fn from(value: Vec<Vec<Vec<bool>>>) -> Self {
         let dim_1 = value.len();
         let dim_2 = value[0].len();
         let dim_3 = value[0][0].len();
 
-        let mut poly_cube = BasicPolyCube::new(dim_1, dim_2, dim_3);
+        let mut poly_cube = NaivePolyCube::new(dim_1, dim_2, dim_3);
 
         for d3 in 0..poly_cube.dim_3 {
             for d2 in 0..poly_cube.dim_2 {
@@ -96,7 +96,7 @@ impl From<Vec<Vec<Vec<bool>>>> for BasicPolyCube {
     }
 }
 
-impl BasicPolyCube {
+impl NaivePolyCube {
     /// Get the dimensions of this polycube
     pub fn dims(&self) -> (usize, usize, usize) {
         (self.dim_1, self.dim_2, self.dim_3)
@@ -216,7 +216,7 @@ impl BasicPolyCube {
     }
 
     /// Create a new [`PolyCube`], representing `self` rotated `k` times in the plane indicated by `a1` and `a2`.
-    pub fn rot90(mut self, k: usize, (a1, a2): (usize, usize)) -> BasicPolyCube {
+    pub fn rot90(mut self, k: usize, (a1, a2): (usize, usize)) -> NaivePolyCube {
         assert!(a1 <= 2, "a1 must be <= 2");
         assert!(a2 <= 2, "a2 must be <= 2");
 
@@ -252,7 +252,7 @@ impl BasicPolyCube {
     ///
     /// The axes of the returned [`PolyCube`] will be those of `self`, rearranged according to the
     /// provided axes.
-    pub fn transpose(&self, a1: usize, a2: usize, a3: usize) -> BasicPolyCube {
+    pub fn transpose(&self, a1: usize, a2: usize, a3: usize) -> NaivePolyCube {
         assert!(a1 != a2);
         assert!(a1 != a3);
         assert!(a2 != a3);
@@ -267,7 +267,7 @@ impl BasicPolyCube {
             original_dimension[a3],
         ];
 
-        let mut new_cube = BasicPolyCube::new(td1, td2, td3);
+        let mut new_cube = NaivePolyCube::new(td1, td2, td3);
 
         for d1 in 0..self.dim_1 {
             for d2 in 0..self.dim_2 {
@@ -348,8 +348,8 @@ impl BasicPolyCube {
 
     /// Create a new [`PolyCube`] that has an extra box-space on all sides
     /// of the polycube.
-    pub fn pad_one(&self) -> BasicPolyCube {
-        let mut cube_next = BasicPolyCube::new(self.dim_1 + 2, self.dim_2 + 2, self.dim_3 + 2);
+    pub fn pad_one(&self) -> NaivePolyCube {
+        let mut cube_next = NaivePolyCube::new(self.dim_1 + 2, self.dim_2 + 2, self.dim_3 + 2);
 
         for d1 in 0..self.dim_1 {
             for d2 in 0..self.dim_2 {
@@ -368,9 +368,9 @@ impl BasicPolyCube {
     /// items in `from_set`.
     ///
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<BasicPolyCube>
+    pub fn unique_expansions<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<NaivePolyCube>
     where
-        I: Iterator<Item = &'a BasicPolyCube> + ExactSizeIterator,
+        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator,
     {
         let bar = super::make_bar(from_set.len() as u64);
 
@@ -451,7 +451,7 @@ impl BasicPolyCube {
     /// Create a new [`PolyCube`] representing `self` but cropped.
     ///
     /// Cropping means that there are no planes without any present boxes.
-    pub fn crop(&self) -> BasicPolyCube {
+    pub fn crop(&self) -> NaivePolyCube {
         macro_rules! direction {
             ($d1:expr, $d2:expr, $d3:expr, $pred:expr) => {{
                 let mut all_zero_count: usize = 0;
@@ -484,7 +484,7 @@ impl BasicPolyCube {
         // If there are `dim_1` planes to be removed, we have to remove them all,
         // which means that there are no boxes present in this polycube, at all.
         if d1_left == self.dim_1 {
-            return BasicPolyCube {
+            return NaivePolyCube {
                 dim_1: 0,
                 dim_2: 0,
                 dim_3: 0,
@@ -502,7 +502,7 @@ impl BasicPolyCube {
         let d3_left = direction!(0..self.dim_3, self.dim_1, self.dim_2, d3_first);
         let d3_right = direction!((0..self.dim_3).rev(), self.dim_1, self.dim_2, d3_first);
 
-        let mut new_cube = BasicPolyCube::new(
+        let mut new_cube = NaivePolyCube::new(
             self.dim_1 - d1_left - d1_right,
             self.dim_2 - d2_left - d2_right,
             self.dim_3 - d3_left - d3_right,
@@ -525,15 +525,15 @@ impl BasicPolyCube {
     }
 }
 
-impl BasicPolyCube {
+impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
     pub fn unique_expansions_rayon<'a, I>(
         use_bar: bool,
         n: usize,
         from_set: I,
-    ) -> Vec<BasicPolyCube>
+    ) -> Vec<NaivePolyCube>
     where
-        I: Iterator<Item = &'a BasicPolyCube> + ExactSizeIterator + Clone + Send + Sync,
+        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator + Clone + Send + Sync,
     {
         use rayon::prelude::*;
 

@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, BasicPolyCube, PolyCubeFile};
+use opencubes::{make_bar, NaivePolyCube, PolyCubeFile};
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -194,7 +194,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
     for cube in file {
         let cube = match cube {
-            Ok(c) => BasicPolyCube::from(c),
+            Ok(c) => NaivePolyCube::from(c),
             Err(e) => {
                 println!("Error: Reading the file failed. Error: {e}.");
                 std::process::exit(1);
@@ -212,7 +212,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
             bar.tick();
         }
 
-        let mut form: Option<BasicPolyCube> = None;
+        let mut form: Option<NaivePolyCube> = None;
         let canonical_form = || cube.canonical_form();
 
         if canonical && validate_canonical {
@@ -266,15 +266,15 @@ fn unique_expansions<F>(
     use_cache: bool,
     n: usize,
     compression: Compression,
-) -> Vec<BasicPolyCube>
+) -> Vec<NaivePolyCube>
 where
-    F: FnMut(usize, std::slice::Iter<'_, BasicPolyCube>) -> Vec<BasicPolyCube>,
+    F: FnMut(usize, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
 {
     if n == 0 {
         return Vec::new();
     }
 
-    let mut base = BasicPolyCube::new(1, 1, 1);
+    let mut base = NaivePolyCube::new(1, 1, 1);
 
     base.set(0, 0, 0).unwrap();
 
@@ -317,7 +317,7 @@ where
 
                 let cached: HashSet<_> = cache
                     .filter_map(filter)
-                    .map(BasicPolyCube::from)
+                    .map(NaivePolyCube::from)
                     .map(|v| v.canonical_form())
                     .collect();
 
@@ -369,8 +369,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let cubes = if opts.no_parallelism {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, BasicPolyCube>| {
-                BasicPolyCube::unique_expansions(true, n, current)
+            |n, current: std::slice::Iter<'_, NaivePolyCube>| {
+                NaivePolyCube::unique_expansions(true, n, current)
             },
             cache,
             n,
@@ -378,8 +378,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
         )
     } else {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, BasicPolyCube>| {
-                BasicPolyCube::unique_expansions_rayon(true, n, current)
+            |n, current: std::slice::Iter<'_, NaivePolyCube>| {
+                NaivePolyCube::unique_expansions_rayon(true, n, current)
             },
             cache,
             n,
@@ -466,7 +466,7 @@ pub fn convert(opts: &ConvertArgs) {
         }?;
 
         if opts.canonicalize {
-            Some(BasicPolyCube::from(cube).canonical_form().into())
+            Some(NaivePolyCube::from(cube).canonical_form().into())
         } else {
             Some(cube)
         }

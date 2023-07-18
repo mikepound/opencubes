@@ -1,18 +1,17 @@
-
 /// Polycube representation
 /// stores up to 16 blocks (number of cubes normally implicit or seperate in program state)
 /// well formed polycubes are a sorted list of coordinates low to high
 /// cordinates are group of packed 5 bit unsigned integers '-ZZZZZYYYYYXXXXX'
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
 pub struct CubeMapPos {
-    pub cubes: [u16; 16]
+    pub cubes: [u16; 16],
 }
 
 /// Partial Polycube representation for storage
 /// the first block is stored seperately and used as a key to access the set
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
 pub struct CubeMapPosPart {
-    pub cubes: [u16; 15]
+    pub cubes: [u16; 15],
 }
 
 /// the "Dimension" or "Shape" of a poly cube
@@ -112,7 +111,7 @@ impl CubeMap {
         }
         true
     }
-    
+
     #[cfg(feature = "diagnostics")]
     /// find an existing block to seed continuity check
     fn find_a_block(&self) -> Dim {

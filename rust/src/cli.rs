@@ -9,9 +9,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 
-mod polycube_reps;
-mod pointlist;
 mod opti_bit_set;
+mod pointlist;
+mod polycube_reps;
 mod rotations;
 
 fn unknown_bar() -> ProgressBar {
@@ -423,8 +423,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 n,
                 opts.cache_compression,
             );
-            cubes.len()  
-        },
+            cubes.len()
+        }
         (EnumerationMode::Standard, false) => {
             let cubes = unique_expansions(
                 |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
@@ -434,17 +434,13 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 n,
                 opts.cache_compression,
             );
-            cubes.len()  
-        },
-        (EnumerationMode::RotationReduced, true) => {
-            opti_bit_set::gen_polycubes(n)
-        },
+            cubes.len()
+        }
+        (EnumerationMode::RotationReduced, true) => opti_bit_set::gen_polycubes(n),
         (EnumerationMode::RotationReduced, false) => {
             panic!("parallel rotation reduced not supported")
-        },
-        (EnumerationMode::PointList, para) => {
-            pointlist::gen_polycubes(n, !para)
-        },
+        }
+        (EnumerationMode::PointList, para) => pointlist::gen_polycubes(n, !para),
     };
 
     let duration = start.elapsed();

@@ -2,7 +2,7 @@ import unittest
 from libraries.packing import pack
 from libraries.pcube import read, write, Orientation, Compression
 from io import BytesIO
-from utils import get_test_data
+from .utils import get_test_data
 
 class PcubeTests(unittest.TestCase):
     def test_pcube_integrity(self):

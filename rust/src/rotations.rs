@@ -327,7 +327,7 @@ pub fn to_min_rot(map: &CubeMap) -> CubeMap {
 }
 
 #[inline]
-fn map_coord(x: u16, y: u16, z: u16, shape: &Dim, col: MatrixCol) -> u16 {
+pub fn map_coord(x: u16, y: u16, z: u16, shape: &Dim, col: MatrixCol) -> u16 {
     match col {
         MatrixCol::XP => x,
         MatrixCol::XN => shape.x as u16 - x,

@@ -1,3 +1,9 @@
+use std::cmp::{max, min};
+
+use opencubes::naive_polycube::NaivePolyCube;
+
+use crate::rotations::{map_coord, MatrixCol};
+
 /// Polycube representation
 /// stores up to 16 blocks (number of cubes normally implicit or seperate in program state)
 /// well formed polycubes are a sorted list of coordinates low to high
@@ -5,6 +11,100 @@
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
 pub struct CubeMapPos {
     pub cubes: [u16; 16],
+}
+
+/// Conversion function to assist with loading Polycubes from cache file to point-list implementation
+/// Returned cubes may not be fully canonicalized (X >= Y >= Z guarenteed but not exact rotation)
+pub fn naive_to_map_pos(src: &NaivePolyCube) -> (CubeMapPos, Dim) {
+    let mut dst = CubeMapPos { cubes: [0; 16] };
+    let (x, y, z) = src.dims();
+    let dim = Dim {
+        x: x - 1,
+        y: y - 1,
+        z: z - 1,
+    };
+
+    //correction matrix to convert to canonical dimension. I dont like it but it works
+    let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
+        (MatrixCol::XP, MatrixCol::YP, MatrixCol::ZP, dim)
+    } else if x >= z && z >= y {
+        (
+            MatrixCol::XP,
+            MatrixCol::ZP,
+            MatrixCol::YN,
+            Dim {
+                x: x - 1,
+                y: z - 1,
+                z: y - 1,
+            },
+        )
+    } else if y >= x && x >= z {
+        (
+            MatrixCol::YP,
+            MatrixCol::XP,
+            MatrixCol::ZN,
+            Dim {
+                x: y - 1,
+                y: x - 1,
+                z: z - 1,
+            },
+        )
+    } else if y >= z && z >= x {
+        (
+            MatrixCol::YP,
+            MatrixCol::ZP,
+            MatrixCol::XP,
+            Dim {
+                x: y - 1,
+                y: z - 1,
+                z: x - 1,
+            },
+        )
+    } else if z >= x && x >= y {
+        (
+            MatrixCol::ZN,
+            MatrixCol::XP,
+            MatrixCol::YN,
+            Dim {
+                x: z - 1,
+                y: x - 1,
+                z: y - 1,
+            },
+        )
+    } else if z >= y && y >= x {
+        (
+            MatrixCol::ZN,
+            MatrixCol::YN,
+            MatrixCol::XP,
+            Dim {
+                x: z - 1,
+                y: y - 1,
+                z: x - 1,
+            },
+        )
+    } else {
+        panic!("imposible dimension of shape {:?}", dim)
+    };
+
+    let mut dst_index = 0;
+    for dz in 0..z as u16 {
+        for dy in 0..y as u16 {
+            for dx in 0..x as u16 {
+                if src.is_set(dx as usize, dy as usize, dz as usize) {
+                    let cx = map_coord(dx, dy, dz, &dim, x_col);
+                    let cy = map_coord(dx, dy, dz, &dim, y_col);
+                    let cz = map_coord(dx, dy, dz, &dim, z_col);
+                    if cx > rdim.x as u16 || cy > rdim.y as u16 || cz > rdim.z as u16 {
+                        panic!("illegal block place {}, {}, {} {:?}", cx, cy, cz, dim)
+                    }
+                    let pack = ((cz << 10) | (cy << 5) | cx) as u16;
+                    dst.cubes[dst_index] = pack;
+                    dst_index += 1;
+                }
+            }
+        }
+    }
+    (dst, rdim)
 }
 
 /// Partial Polycube representation for storage

@@ -1,11 +1,12 @@
 use std::{cmp::max, sync::Mutex, time::Instant};
 
 use crate::{
-    polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
+    polycube_reps::{naive_to_map_pos, CubeMapPos, CubeMapPosPart, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
 };
 
 use hashbrown::{HashMap, HashSet};
+use opencubes::naive_polycube::NaivePolyCube;
 use rayon::prelude::*;
 
 ///structure to store the polycubes
@@ -283,16 +284,53 @@ fn count_polycubes(maps: &MapStore) -> usize {
     total
 }
 
+/// count the number of polycubes across all subsets
+fn polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
+    let mut v = Vec::new();
+    while let Some(((dim, head), body)) = maps.iter().next() {
+        //extra scope to free lock and make borrow checker allow mutation of maps
+        {
+            let bod = body.lock().unwrap();
+            let mut cmp = CubeMapPos { cubes: [0; 16] };
+            cmp.cubes[0] = *head;
+            for b in bod.iter() {
+                for i in 0..15 {
+                    cmp.cubes[i + 1] = b.cubes[i];
+                }
+                v.push(cmp);
+            }
+        }
+        let dim = *dim;
+        let head = *head;
+        maps.remove(&(dim, head));
+    }
+    v
+}
+
 /// run pointlist based generation algorithm
-pub fn gen_polycubes(n: usize, parallel: bool) -> usize {
-    let unit_cube = CubeMapPos {
-        cubes: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    };
+pub fn gen_polycubes(
+    n: usize,
+    parallel: bool,
+    mut current: Vec<NaivePolyCube>,
+    calculate_from: usize,
+) -> Vec<CubeMapPos> {
     let t1_start = Instant::now();
+
+    //convert input vector of NaivePolyCubes and convert them to
     let mut seeds = MapStore::new();
-    seeds.insert((Dim { x: 1, y: 0, z: 0 }, 0), Mutex::new(HashSet::new()));
-    insert_map(&seeds, &Dim { x: 1, y: 0, z: 0 }, &unit_cube, 2);
-    for i in 3..=n as usize {
+    for seed in current.iter() {
+        let (seed, dim) = naive_to_map_pos(seed);
+        if !seeds.contains_key(&(dim, seed.cubes[0])) {
+            for i in 0..(dim.y * 32 + dim.x + 1) {
+                seeds.insert((dim, i as u16), Mutex::new(HashSet::new()));
+            }
+        }
+        insert_map(&seeds, &dim, &seed, calculate_from - 1);
+    }
+    current.clear();
+    current.shrink_to_fit();
+
+    for i in calculate_from..=n as usize {
         let mut dst = MapStore::new();
         expand_cube_set(&mut seeds, i - 1, &mut dst, parallel);
         seeds = dst;
@@ -306,5 +344,6 @@ pub fn gen_polycubes(n: usize, parallel: bool) -> usize {
         );
         println!("Elapsed time: {}.{:06}s", time / 1000000, time % 1000000);
     }
-    count_polycubes(&seeds)
+    //count_polycubes(&seeds);
+    polycubes_to_vec(&mut seeds)
 }

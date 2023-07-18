@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 
+/// A PolyCube read directly from a pcube file.
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct RawPCube {
     dim_1: u8,

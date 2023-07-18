@@ -2,6 +2,7 @@ use std::io::{BufReader, Read, Write};
 
 use flate2::{read::GzDecoder, write::GzEncoder};
 
+/// Compression types supported for `.pcube` files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compression {
     None,

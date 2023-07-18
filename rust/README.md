@@ -47,37 +47,14 @@ Ryzen 9 7900X
 | b83f9c6 | 3ms | 4.3ms | 8.58ms | 25.4ms | 0.137s | 0.986s | 8.02s | 66.7s | OoM | OoM | OoM | OoM | point-list + rayon |
 
 ## To Do
-- implement flag for target n
+- add cache file support to alternative implementations
 
-- maybe implement cache file saving and loading
-
-- store a more compressed encoding for polycubes maybe an list of N coordinates
-encoded as -ZZZZZYYYYYXXXXX in u16's. this would reduce the size of the poly cubes from
-84 Bytes (with size16 enabled) to 32 Bytes for a maximum of 16 cubes. The encoding discribed
-https://github.com/mikepound/opencubes/issues/8 would be more efficient for small N (N < 16)
-but becomes less efficient if needing to store the maximum space a cube could take up
-
-- might need a denser data stucture than a hashset with its extra space over head but
-cant think what to replace it with
+- implement hashtableless solution that just enumerates
 
 - profile and optimise
 
-- run out of memory faster by multi threading polycube generation.
-Some concerns about the lock on the set blocking but think it should generally help.
-Have rayon but my workload is very unbalanced.
-
-- run out of memory even faster with SIMD potential. not easy to parallelise but
-could maybe bucket similar work buckets of polycubes with similar bounding boxes
-that need a cube added in the same place
-
 - deduplicate mirrors as well to reduce (optimistically) ~50% memory usage in the
 hashset and then test for symatry when counting unique variants
-
-## Foreseen Issues
-as many have discussed memory capacity seems to be the big killer. assuming rough
-exponential growth based on the growth from n=6 -> n=12 n=16 may require as much as 2tb of
-ram to access. Either dividing the problem across many smaller cached files may work
-or (easier but painfully slower) mmapping a large ~2tb "swap" file on hard disks could stand a chance of working
 
 
 ## About Code

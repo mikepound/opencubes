@@ -1,5 +1,4 @@
-//! This module contains all .pcube file handling implementation
-//! details.
+//! Interaction with `.pcube` files
 
 use std::{
     fs::File,

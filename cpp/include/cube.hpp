@@ -33,7 +33,18 @@ struct HashXYZ {
 using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
+protected:
     std::vector<XYZ> sparse;
+public:
+	Cube() {}
+	explicit Cube(size_t N) : sparse(N) {}
+	Cube(std::initializer_list<XYZ> il) : sparse(il) {}
+	
+	size_t size() const { return sparse.size(); }
+	
+	XYZ* data() { return sparse.data(); }
+	const XYZ* data() const { return sparse.data(); }
+	
     /**
      * Define subset of vector operations for Cube
      * This simplifies the code everywhere else.
@@ -45,8 +56,6 @@ struct Cube {
     std::vector<XYZ>::const_iterator begin() const { return sparse.begin(); }
 
     std::vector<XYZ>::const_iterator end() const { return sparse.end(); }
-
-    size_t size() const { return sparse.size(); }
 
     void reserve(size_t N) { sparse.reserve(N); }
 

@@ -13,7 +13,7 @@ TEST(RotationsTests, TestRotateDoesNotThrow) {
 
 TEST(RotationsTests, TestRotationsMatchesExpectation) {
     XYZ shape = XYZ(2, 1, 1);
-    Cube cube = Cube{{XYZ(0, 0, 0), XYZ(1, 0, 0)}};
+    Cube cube = {XYZ(0, 0, 0), XYZ(1, 0, 0)};
     XYZ expected_shapes[24] = {XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1), XYZ(2, 1, 1),
                                XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 1, 2), XYZ(1, 1, 2), XYZ(1, 1, 2), XYZ(1, 1, 2),
                                XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 2, 1), XYZ(1, 1, 2), XYZ(1, 1, 2), XYZ(1, 1, 2), XYZ(1, 1, 2)};
@@ -30,18 +30,18 @@ TEST(RotationsTests, TestRotationsMatchesExpectation) {
         {},
         {},
         {},
-        {{XYZ(1, 1, 0), XYZ(1, 1, 1)}},
-        {{XYZ(1, 0, 2), XYZ(1, 0, 1)}},
-        {{XYZ(0, 1, 2), XYZ(0, 1, 1)}},
-        {{XYZ(0, 0, 0), XYZ(0, 0, 1)}},
+        {XYZ(1, 1, 0), XYZ(1, 1, 1)},
+        {XYZ(1, 0, 2), XYZ(1, 0, 1)},
+        {XYZ(0, 1, 2), XYZ(0, 1, 1)},
+        {XYZ(0, 0, 0), XYZ(0, 0, 1)},
         {},
         {},
         {},
         {},
-        {{XYZ(1, 1, 2), XYZ(1, 1, 1)}},
-        {{XYZ(1, 0, 0), XYZ(1, 0, 1)}},
-        {{XYZ(0, 1, 0), XYZ(0, 1, 1)}},
-        {{XYZ(0, 0, 2), XYZ(0, 0, 1)}},
+        {XYZ(1, 1, 2), XYZ(1, 1, 1)},
+        {XYZ(1, 0, 0), XYZ(1, 0, 1)},
+        {XYZ(0, 1, 0), XYZ(0, 1, 1)},
+        {XYZ(0, 0, 2), XYZ(0, 0, 1)},
     };
 
     std::stringstream shapes;

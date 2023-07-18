@@ -3,12 +3,12 @@
 
 use std::iter::FusedIterator;
 
-use crate::PolyCube;
+use crate::BasicPolyCube;
 
 struct PlaneIterator {
     count: usize,
     plane: (usize, usize),
-    base: PolyCube,
+    base: BasicPolyCube,
 }
 
 impl ExactSizeIterator for PlaneIterator {}
@@ -16,7 +16,7 @@ impl ExactSizeIterator for PlaneIterator {}
 impl FusedIterator for PlaneIterator {}
 
 impl Iterator for PlaneIterator {
-    type Item = PolyCube;
+    type Item = BasicPolyCube;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.count <= 3 {
@@ -38,21 +38,21 @@ impl Iterator for PlaneIterator {
 /// for this iterator
 struct AllRotationsIter<I>
 where
-    I: Iterator<Item = PolyCube>,
+    I: Iterator<Item = BasicPolyCube>,
 {
     inner: I,
     rotations_checked: usize,
 }
 
-impl<I> ExactSizeIterator for AllRotationsIter<I> where I: Iterator<Item = PolyCube> {}
+impl<I> ExactSizeIterator for AllRotationsIter<I> where I: Iterator<Item = BasicPolyCube> {}
 
-impl<I> FusedIterator for AllRotationsIter<I> where I: Iterator<Item = PolyCube> {}
+impl<I> FusedIterator for AllRotationsIter<I> where I: Iterator<Item = BasicPolyCube> {}
 
 impl<I> Iterator for AllRotationsIter<I>
 where
-    I: Iterator<Item = PolyCube>,
+    I: Iterator<Item = BasicPolyCube>,
 {
-    type Item = PolyCube;
+    type Item = BasicPolyCube;
 
     fn next(&mut self) -> Option<Self::Item> {
         let next = self.inner.next()?;
@@ -66,12 +66,12 @@ where
     }
 }
 
-impl PolyCube {
+impl BasicPolyCube {
     /// Obtain an iterator yielding all rotations of `self` in `plane`.
     pub fn rotations_in_plane(
         self,
         plane: (usize, usize),
-    ) -> impl Iterator<Item = PolyCube> + ExactSizeIterator {
+    ) -> impl Iterator<Item = BasicPolyCube> + ExactSizeIterator {
         PlaneIterator {
             count: 0,
             plane,
@@ -80,7 +80,7 @@ impl PolyCube {
     }
 
     /// Obtain an iterator yielding all possible rotations of `self`
-    pub fn all_rotations(&self) -> impl Iterator<Item = PolyCube> + '_ {
+    pub fn all_rotations(&self) -> impl Iterator<Item = BasicPolyCube> + '_ {
         const _0_1: (usize, usize) = (0, 1);
         const _1_2: (usize, usize) = (1, 2);
         const _0_2: (usize, usize) = (0, 2);
@@ -111,7 +111,7 @@ impl PolyCube {
 
 #[test]
 pub fn correct_amount_of_rotations() {
-    let cube = PolyCube::new_equal_sides(5);
+    let cube = BasicPolyCube::new_equal_sides(5);
 
     assert_eq!(cube.clone().rotations_in_plane((1, 2)).count(), 4);
     assert_eq!(cube.all_rotations().count(), 24);

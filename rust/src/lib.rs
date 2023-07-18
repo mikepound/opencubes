@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod test;
 
-mod pcube_file;
-pub use pcube_file::{Compression, PolyCubeFile};
+mod pcube;
+pub use pcube::{Compression, PolyCubeFile};
 
-mod polycube;
-pub use polycube::PolyCube;
+mod basic_polycube;
+pub use basic_polycube::BasicPolyCube;
 
 pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     use indicatif::{ProgressBar, ProgressStyle};

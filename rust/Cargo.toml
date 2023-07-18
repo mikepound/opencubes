@@ -7,11 +7,13 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.3.12", features = [ "derive" ] }
+crossbeam-channel = "0.5.8"
 flate2 = "1.0.26"
 indicatif = "0.17.5"
 num_cpus = "1.16.0"
 parking_lot = "0.12.1"
 rayon = "1.7.0"
+xxhash-rust = { version = "0.8.6", features = ["xxh64"] }
 
 [[bin]]
 name = "opencubes"

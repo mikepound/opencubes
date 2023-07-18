@@ -158,6 +158,16 @@ where
             had_error: false,
         })
     }
+
+    /// Explicitly set count of polycubes in this file to `count`.
+    ///
+    /// Be careful when using this! `count` must match the actual
+    /// amount of polycubes in this file, else Iterator craziness will
+    /// ensue.
+    pub fn with_count(mut self, count: Option<usize>) -> Self {
+        self.len = count;
+        self
+    }
 }
 
 impl PCubeFile {

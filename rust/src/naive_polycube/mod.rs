@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use indicatif::ProgressBar;
 use parking_lot::RwLock;
+use xxhash_rust::xxh64::Xxh64;
 
 use crate::pcube::RawPCube;
 
@@ -382,27 +383,41 @@ impl NaivePolyCube {
     /// items in `from_set`.
     ///
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions<'a, I>(progress_bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions<'a, I>(
+        progress_bar: ProgressBar,
+        from_set: I,
+    ) -> impl Iterator<Item = NaivePolyCube>
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator,
+        I: Iterator<Item = NaivePolyCube> + Send + 'static,
     {
-        let mut this_level = HashSet::new();
+        let (tx, rx) = crossbeam_channel::bounded(1024);
 
-        for value in from_set {
-            for expansion in value.expand().map(|v| v.crop()) {
-                let max = expansion.canonical_form();
+        std::thread::spawn(move || {
+            let mut this_level = HashSet::new();
 
-                let missing = !this_level.contains(&max);
+            for value in from_set {
+                for expansion in value.expand().map(|v| v.crop()) {
+                    let max = expansion.canonical_form();
 
-                if missing {
-                    this_level.insert(max);
+                    use std::hash::{Hash, Hasher};
+
+                    let mut hasher = Xxh64::new(408946039850741);
+                    max.hash(&mut hasher);
+                    let result = hasher.finish();
+
+                    let missing = !this_level.contains(&result);
+
+                    if missing {
+                        this_level.insert(result);
+                        tx.send(max).unwrap();
+                    }
                 }
+
+                progress_bar.inc(1);
             }
+        });
 
-            progress_bar.inc(1);
-        }
-
-        this_level.into_iter().collect()
+        rx.into_iter()
     }
 
     /// Check whether this cube is already cropped.
@@ -523,47 +538,68 @@ impl NaivePolyCube {
 
 impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions_rayon<'a, I>(bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions_rayon<F, I>(
+        bar: ProgressBar,
+        mut from_set: F,
+    ) -> impl Iterator<Item = NaivePolyCube>
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator + Clone + Send + Sync,
+        F: FnMut() -> I,
+        I: Iterator<Item = RawPCube> + Send + Sync + 'static,
     {
         use rayon::prelude::*;
 
-        if from_set.len() == 0 {
-            return Vec::new();
+        let (tx, rx) = crossbeam_channel::bounded(1024);
+
+        let initial = from_set();
+        let (_, max) = initial.size_hint();
+        let len = if let Some(max) = max {
+            max
+        } else {
+            panic!("Cannot run in parallel if iteration count is not known!");
+        };
+
+        if len == 0 {
+            panic!("Input iterator had length 0");
         }
 
         let available_parallelism = num_cpus::get();
 
-        let chunk_size = (from_set.len() / available_parallelism) + 1;
-        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
+        let chunk_size = (len / available_parallelism) + 1;
+        let chunks = (len + chunk_size - 1) / chunk_size;
 
-        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
-            from_set
-                .clone()
-                .skip(v * chunk_size)
-                .take(chunk_size)
-                .into_iter()
-        });
+        let chunks: Vec<_> = (0..chunks)
+            .into_iter()
+            .map(|v| from_set().skip(v * chunk_size).take(chunk_size).into_iter())
+            .collect();
+        let chunk_iterator = chunks.into_par_iter();
 
-        let this_level = RwLock::new(HashSet::new());
+        std::thread::spawn(move || {
+            let this_level = RwLock::new(HashSet::new());
 
-        chunk_iterator.for_each(|v| {
-            for value in v {
-                for expansion in value.expand().map(|v| v.crop()) {
-                    let max = expansion.canonical_form();
+            chunk_iterator.for_each(|v| {
+                for value in v {
+                    for expansion in NaivePolyCube::from(value).expand().map(|v| v.crop()) {
+                        let max = expansion.canonical_form();
 
-                    let missing = !this_level.read().contains(&max);
+                        use std::hash::{Hash, Hasher};
 
-                    if missing {
-                        this_level.write().insert(max);
+                        let mut hasher = Xxh64::new(408946039850741);
+                        max.hash(&mut hasher);
+                        let result = hasher.finish();
+
+                        let missing = !this_level.read().contains(&result);
+
+                        if missing {
+                            this_level.write().insert(result);
+                            tx.send(max).unwrap();
+                        }
                     }
-                }
 
-                bar.inc(1);
-            }
+                    bar.inc(1);
+                }
+            });
         });
 
-        this_level.into_inner().into_iter().collect()
+        rx.into_iter()
     }
 }

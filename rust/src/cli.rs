@@ -351,7 +351,7 @@ fn unique_expansions(use_cache: bool, n: usize, compression: Compression) -> (us
 
         convert(&ConvertArgs {
             path: name.clone(),
-            compression: Compression::None,
+            compression: Compression::Gzip,
             canonicalize: false,
             update_count: true,
             output_path: None,

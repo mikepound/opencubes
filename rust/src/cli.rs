@@ -356,11 +356,14 @@ where
             let bar = make_bar(current.len() as u64);
             bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
+            let start = Instant::now();
+
             let next = expansion_fn(&bar, current.iter());
 
             bar.set_message(format!(
-                "base polycubes expanded. Found {} unique expansions.",
-                next.len()
+                "Found {} unique expansions in {} ms.",
+                next.len(),
+                start.elapsed().as_millis(),
             ));
 
             bar.finish();
@@ -417,7 +420,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let cubes = cubes.len();
 
     println!("Unique polycubes found for N = {n}: {cubes}.",);
-    println!("Duration: {} ms", duration.as_millis());
+    println!("Total duration: {} ms", duration.as_millis());
 }
 
 pub fn convert(opts: &ConvertArgs) {

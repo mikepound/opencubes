@@ -233,6 +233,8 @@ fn expand_cube_set(seeds: &MapStore, count: usize, dst: &mut MapStore, parallel:
     else {
         seeds.iter().for_each(inner_exp);
     }
+    //retain only subsets that have polycubes
+    dst.retain(|_, v|{v.lock().unwrap().len() > 0});
 }
 
 /// count the number of polycubes across all subsets

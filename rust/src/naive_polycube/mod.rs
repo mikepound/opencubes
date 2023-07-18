@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use indicatif::ProgressBar;
 use parking_lot::RwLock;
 
 use crate::pcube::RawPCube;
@@ -372,17 +373,13 @@ impl NaivePolyCube {
     /// items in `from_set`.
     ///
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions<'a, I>(use_bar: bool, n: usize, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions<'a, I>(progress_bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
     where
         I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator,
     {
-        let bar = super::make_bar(from_set.len() as u64);
-
         let mut this_level = HashSet::new();
 
-        let mut iter = 0;
         for value in from_set {
-            iter += 1;
             for expansion in value.expand().map(|v| v.crop()) {
                 let max = expansion.canonical_form();
 
@@ -393,21 +390,7 @@ impl NaivePolyCube {
                 }
             }
 
-            if use_bar {
-                bar.inc(1);
-
-                // Try to avoid doing this too often
-                if iter % (this_level.len() / 100).max(100) == 0 {
-                    let len = this_level.len();
-                    bar.set_message(format!("Unique polycubes for N = {n} so far: {len}"));
-                }
-            }
-        }
-
-        if use_bar {
-            let len = this_level.len();
-            bar.set_message(format!("Unique polycubes for N = {n}: {len}"));
-            bar.finish();
+            progress_bar.inc(1);
         }
 
         this_level.into_iter().collect()
@@ -531,11 +514,7 @@ impl NaivePolyCube {
 
 impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions_rayon<'a, I>(
-        use_bar: bool,
-        n: usize,
-        from_set: I,
-    ) -> Vec<NaivePolyCube>
+    pub fn unique_expansions_rayon<'a, I>(bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
     where
         I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator + Clone + Send + Sync,
     {
@@ -549,8 +528,6 @@ impl NaivePolyCube {
 
         let chunk_size = (from_set.len() / available_parallelism) + 1;
         let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
-
-        let bar = super::make_bar(from_set.len() as u64);
 
         let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
             from_set
@@ -574,23 +551,9 @@ impl NaivePolyCube {
                     }
                 }
 
-                if use_bar {
-                    bar.inc(1);
-
-                    // Try to avoid doing this too often
-                    if bar.position() % (this_level.read().len() as u64 / 100).max(100) == 0 {
-                        let len = this_level.read().len();
-                        bar.set_message(format!("Unique polycubes for N = {n} so far: {len}",));
-                    }
-                }
+                bar.inc(1);
             }
         });
-
-        if use_bar {
-            let len = this_level.read().len();
-            bar.set_message(format!("Unique polycubes for N = {n}: {len}",));
-            bar.finish();
-        }
 
         this_level.into_inner().into_iter().collect()
     }

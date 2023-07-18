@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, naive_polycube::NaivePolyCube, pcube::PCubeFile};
+use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -36,6 +36,22 @@ fn unknown_bar() -> ProgressBar {
         ]);
 
     ProgressBar::new(100).with_style(style)
+}
+
+pub fn make_bar(len: u64) -> indicatif::ProgressBar {
+    let bar = ProgressBar::new(len);
+
+    let pos_width = format!("{len}").len();
+
+    let template =
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+
+    bar.set_style(
+        ProgressStyle::with_template(&template)
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    bar
 }
 
 #[derive(Clone, Parser)]
@@ -268,7 +284,7 @@ fn unique_expansions<F>(
     compression: Compression,
 ) -> Vec<NaivePolyCube>
 where
-    F: FnMut(usize, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
+    F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
 {
     if n == 0 {
         return Vec::new();
@@ -337,8 +353,17 @@ where
         }
 
         for i in calculate_from..=n {
-            println!("Calculating for N = {i}");
-            let next = expansion_fn(i, current.iter());
+            let bar = make_bar(current.len() as u64);
+            bar.set_message(format!("base polycubes expanded for N = {i}..."));
+
+            let next = expansion_fn(&bar, current.iter());
+
+            bar.set_message(format!(
+                "base polycubes expanded. Found {} unique expansions.",
+                next.len()
+            ));
+
+            bar.finish();
 
             if use_cache {
                 let name = &format!("cubes_{i}.pcube");
@@ -369,8 +394,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let cubes = if opts.no_parallelism {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, NaivePolyCube>| {
-                NaivePolyCube::unique_expansions(true, n, current)
+            |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
+                NaivePolyCube::unique_expansions(bar, current)
             },
             cache,
             n,
@@ -378,8 +403,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
         )
     } else {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, NaivePolyCube>| {
-                NaivePolyCube::unique_expansions_rayon(true, n, current)
+            |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
+                NaivePolyCube::unique_expansions_rayon(bar, current)
             },
             cache,
             n,

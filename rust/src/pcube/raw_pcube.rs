@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct RawPCube {
     dim_1: u8,
     dim_2: u8,
@@ -9,7 +9,15 @@ pub struct RawPCube {
 }
 
 impl RawPCube {
-    pub fn new(dim_1: u8, dim_2: u8, dim_3: u8, data: &[u8]) -> Option<Self> {
+    pub fn dims(&self) -> (u8, u8, u8) {
+        (self.dim_1, self.dim_2, self.dim_3)
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn new(dim_1: u8, dim_2: u8, dim_3: u8, data: Vec<u8>) -> Option<Self> {
         let len = (dim_1 as usize) * (dim_2 as usize) * (dim_3 as usize);
         let byte_len = (len + 7) / 8;
 
@@ -21,7 +29,7 @@ impl RawPCube {
             dim_1,
             dim_2,
             dim_3,
-            data: data.to_vec(),
+            data,
         })
     }
 

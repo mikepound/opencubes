@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use parking_lot::RwLock;
 
+use crate::pcube::RawPCube;
+
 mod expander;
 mod rotations;
 
@@ -12,6 +14,63 @@ pub struct BasicPolyCube {
     dim_2: usize,
     dim_3: usize,
     filled: Vec<bool>,
+}
+
+impl From<RawPCube> for BasicPolyCube {
+    fn from(value: RawPCube) -> Self {
+        let (d1, d2, d3) = value.dims();
+        let (dim_1, dim_2, dim_3) = (d1 as usize, d2 as usize, d3 as usize);
+
+        let mut filled = Vec::with_capacity(dim_1 * dim_2 * dim_3);
+
+        value.data().iter().for_each(|v| {
+            for s in 0..8 {
+                let is_set = ((*v >> s) & 0x1) == 0x1;
+                if filled.capacity() != filled.len() {
+                    filled.push(is_set);
+                }
+            }
+        });
+
+        Self {
+            dim_1,
+            dim_2,
+            dim_3,
+            filled,
+        }
+    }
+}
+
+impl From<&'_ BasicPolyCube> for RawPCube {
+    fn from(value: &'_ BasicPolyCube) -> Self {
+        let byte_len = ((value.dim_1 * value.dim_2 * value.dim_3) + 7) / 8;
+
+        let mut filled = value.filled.iter();
+
+        let mut out_bytes = vec![0; byte_len];
+
+        out_bytes.iter_mut().for_each(|v| {
+            for s in 0..8 {
+                if let Some(true) = filled.next() {
+                    *v |= 1 << s;
+                }
+            }
+        });
+
+        RawPCube::new(
+            value.dim_1 as u8,
+            value.dim_2 as u8,
+            value.dim_3 as u8,
+            out_bytes,
+        )
+        .unwrap()
+    }
+}
+
+impl From<BasicPolyCube> for RawPCube {
+    fn from(value: BasicPolyCube) -> Self {
+        Self::from(&value)
+    }
 }
 
 /// Creating a new polycube from a triple-nested vector
@@ -52,7 +111,7 @@ impl BasicPolyCube {
     ///
     /// This function only produces valid results if `self` and `other` are
     /// two different rotations of the same PolyCube.
-    pub fn canonical_ordering(&self, other: &Self) -> core::cmp::Ordering {
+    fn canonical_ordering(&self, other: &Self) -> core::cmp::Ordering {
         use core::cmp::Ordering;
 
         macro_rules! check_next {
@@ -70,6 +129,13 @@ impl BasicPolyCube {
 
         // I don't think this does what I expect it to do...
         self.filled.cmp(&other.filled)
+    }
+
+    /// Find the canonical form of this PolyCube
+    pub fn canonical_form(&self) -> Self {
+        self.all_rotations()
+            .max_by(Self::canonical_ordering)
+            .unwrap()
     }
 
     /// Calculate the offset into `self.filled` using the provided offsets
@@ -314,10 +380,8 @@ impl BasicPolyCube {
         for value in from_set {
             iter += 1;
             for expansion in value.expand().map(|v| v.crop()) {
-                let max = expansion
-                    .all_rotations()
-                    .max_by(Self::canonical_ordering)
-                    .unwrap();
+                let max = expansion.canonical_form();
+
                 let missing = !this_level.contains(&max);
 
                 if missing {
@@ -497,10 +561,7 @@ impl BasicPolyCube {
         chunk_iterator.for_each(|v| {
             for value in v {
                 for expansion in value.expand().map(|v| v.crop()) {
-                    let max = expansion
-                        .all_rotations()
-                        .max_by(Self::canonical_ordering)
-                        .unwrap();
+                    let max = expansion.canonical_form();
 
                     let missing = !this_level.read().contains(&max);
 

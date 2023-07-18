@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, PolyCube, PolyCubeFile};
+use opencubes::{make_bar, BasicPolyCube, PolyCubeFile};
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -213,10 +213,10 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
             bar.tick();
         }
 
-        let mut form: Option<PolyCube> = None;
+        let mut form: Option<BasicPolyCube> = None;
         let canonical_form = || {
             cube.all_rotations()
-                .max_by(PolyCube::canonical_ordering)
+                .max_by(BasicPolyCube::canonical_ordering)
                 .unwrap()
         };
 
@@ -271,15 +271,15 @@ fn unique_expansions<F>(
     use_cache: bool,
     n: usize,
     compression: Compression,
-) -> Vec<PolyCube>
+) -> Vec<BasicPolyCube>
 where
-    F: FnMut(usize, std::slice::Iter<'_, PolyCube>) -> Vec<PolyCube>,
+    F: FnMut(usize, std::slice::Iter<'_, BasicPolyCube>) -> Vec<BasicPolyCube>,
 {
     if n == 0 {
         return Vec::new();
     }
 
-    let mut base = PolyCube::new(1, 1, 1);
+    let mut base = BasicPolyCube::new(1, 1, 1);
 
     base.set(0, 0, 0).unwrap();
 
@@ -370,8 +370,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let cubes = if opts.no_parallelism {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions(true, n, current)
+            |n, current: std::slice::Iter<'_, BasicPolyCube>| {
+                BasicPolyCube::unique_expansions(true, n, current)
             },
             cache,
             n,
@@ -379,8 +379,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
         )
     } else {
         unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions_rayon(true, n, current)
+            |n, current: std::slice::Iter<'_, BasicPolyCube>| {
+                BasicPolyCube::unique_expansions_rayon(true, n, current)
             },
             cache,
             n,

@@ -3,7 +3,7 @@
 
 use std::iter::FusedIterator;
 
-use crate::NaivePolyCube;
+use super::NaivePolyCube;
 
 struct PlaneIterator {
     count: usize,

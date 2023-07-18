@@ -1,7 +1,7 @@
 //! This module implements an iterator that provides all N + 1 expansions
 //! for a polycube of N.
 
-use crate::NaivePolyCube;
+use super::NaivePolyCube;
 
 type Sides = std::array::IntoIter<(usize, usize, usize), 6>;
 

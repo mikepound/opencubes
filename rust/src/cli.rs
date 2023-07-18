@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, NaivePolyCube, PCubeFile};
+use opencubes::{make_bar, naive_polycube::NaivePolyCube, pcube::PCubeFile};
 
 mod polycube_reps;
 mod pointlist;
@@ -142,11 +142,11 @@ pub enum Compression {
     Gzip,
 }
 
-impl From<Compression> for opencubes::Compression {
+impl From<Compression> for opencubes::pcube::Compression {
     fn from(value: Compression) -> Self {
         match value {
-            Compression::None => opencubes::Compression::None,
-            Compression::Gzip => opencubes::Compression::Gzip,
+            Compression::None => opencubes::pcube::Compression::None,
+            Compression::Gzip => opencubes::pcube::Compression::Gzip,
         }
     }
 }

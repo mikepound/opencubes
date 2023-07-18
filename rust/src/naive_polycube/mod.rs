@@ -1,3 +1,5 @@
+//! A rather naive polycube implementation.
+
 use std::collections::HashSet;
 
 use parking_lot::RwLock;
@@ -7,7 +9,10 @@ use crate::pcube::RawPCube;
 mod expander;
 mod rotations;
 
-/// A polycube
+/// A polycube, represented as three dimensions and an array of booleans.
+///
+/// The array of booleans represents the cubes and their presence (if `true`)
+/// or absence (if `false`).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NaivePolyCube {
     dim_1: usize,
@@ -151,8 +156,8 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)`, and
-    /// using `alloc_count` to keep track of the amount of [`PolyCube`]s that
+    /// Create a new [`NaivePolyCube`] with dimensions `(dim_1, dim_2, dim_3)`, and
+    /// using `alloc_count` to keep track of the amount of [`NaivePolyCube`]s that
     /// are allocated.
     pub fn new_with_alloc_count(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
@@ -176,7 +181,7 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`PolyCube`] with dimensions `(dim_1, dim_2, dim_3)` and
+    /// Create a new [`NaivePolyCube`] with dimensions `(dim_1, dim_2, dim_3)` and
     /// a new allocation tracker.
     pub fn new(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
@@ -189,7 +194,7 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`PolyCube`] with dimensions `(side, side, side)`, and
+    /// Create a new [`NaivePolyCube`] with dimensions `(side, side, side)`, and
     /// a new allocation tracker.
     pub fn new_equal_sides(side: usize) -> Self {
         Self::new(side, side, side)
@@ -214,7 +219,7 @@ impl NaivePolyCube {
             .unwrap_or(false)
     }
 
-    /// Create a new [`PolyCube`], representing `self` rotated `k` times in the plane indicated by `a1` and `a2`.
+    /// Create a new [`NaivePolyCube`], representing `self` rotated `k` times in the plane indicated by `a1` and `a2`.
     pub fn rot90(mut self, k: usize, (a1, a2): (usize, usize)) -> NaivePolyCube {
         assert!(a1 <= 2, "a1 must be <= 2");
         assert!(a2 <= 2, "a2 must be <= 2");
@@ -247,9 +252,9 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`PolyCube`], representing `self` transposed according to `a1`, `a2`, and `a3`.
+    /// Create a new [`NaivePolyCube`], representing `self` transposed according to `a1`, `a2`, and `a3`.
     ///
-    /// The axes of the returned [`PolyCube`] will be those of `self`, rearranged according to the
+    /// The axes of the returned [`NaivePolyCube`] will be those of `self`, rearranged according to the
     /// provided axes.
     pub fn transpose(&self, a1: usize, a2: usize, a3: usize) -> NaivePolyCube {
         assert!(a1 != a2);
@@ -285,7 +290,7 @@ impl NaivePolyCube {
         new_cube
     }
 
-    /// Create a new [`PolyCube`], representing `self` flipped along `axis`.
+    /// Create a new [`NaivePolyCube`], representing `self` flipped along `axis`.
     pub fn flip(&mut self, axis: usize) {
         assert!(axis <= 2, "Axis must be <= 2");
 
@@ -345,7 +350,7 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`PolyCube`] that has an extra box-space on all sides
+    /// Create a new [`NaivePolyCube`] that has an extra box-space on all sides
     /// of the polycube.
     pub fn pad_one(&self) -> NaivePolyCube {
         let mut cube_next = NaivePolyCube::new(self.dim_1 + 2, self.dim_2 + 2, self.dim_3 + 2);
@@ -363,7 +368,7 @@ impl NaivePolyCube {
         cube_next
     }
 
-    /// Obtain a list of [`PolyCube`]s representing all unique expansions of the
+    /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
     /// items in `from_set`.
     ///
     // TODO: turn this into an iterator that yield unique expansions?
@@ -447,7 +452,7 @@ impl NaivePolyCube {
         return true;
     }
 
-    /// Create a new [`PolyCube`] representing `self` but cropped.
+    /// Create a new [`NaivePolyCube`] representing `self` but cropped.
     ///
     /// Cropping means that there are no planes without any present boxes.
     pub fn crop(&self) -> NaivePolyCube {

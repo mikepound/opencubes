@@ -495,6 +495,8 @@ pub fn convert(opts: &ConvertArgs) {
         }
     });
 
+    let canonical = canonical || opts.canonicalize;
+
     match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
         Ok(_) => {}
         Err(e) => exit(&format!("Failed. Error: {e}.")),

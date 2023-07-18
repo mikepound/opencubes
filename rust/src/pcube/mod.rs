@@ -1,3 +1,6 @@
+//! This module contains all .pcube file handling implementation
+//! details.
+
 use std::{
     fs::File,
     io::{ErrorKind, Read, Seek, Write},
@@ -13,7 +16,10 @@ use compression::{Reader, Writer};
 
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
-pub struct PolyCubeFile<T = File>
+/// A pcube file.
+///
+/// Use this file as an iterator to get all of the [`RawPCube`]s it contains.
+pub struct PCubeFile<T = File>
 where
     T: Read,
 {
@@ -24,7 +30,7 @@ where
     cubes_are_canonical: bool,
 }
 
-impl<T> Iterator for PolyCubeFile<T>
+impl<T> Iterator for PCubeFile<T>
 where
     T: Read,
 {
@@ -68,10 +74,11 @@ where
     }
 }
 
-impl<T> PolyCubeFile<T>
+impl<T> PCubeFile<T>
 where
     T: Read,
 {
+    /// The compression used by this pcube file.
     pub fn compression(&self) -> Compression {
         match self.input {
             Reader::Uncompressed(_) => Compression::None,
@@ -79,14 +86,18 @@ where
         }
     }
 
+    /// The amount of polycubes in this file, if known.
     pub fn len(&self) -> Option<usize> {
         self.len
     }
 
+    /// `true` if the file indicates that the cubes are
+    /// in canonical form.
     pub fn canonical(&self) -> bool {
         self.cubes_are_canonical
     }
 
+    /// Try to create a new [`PCubeFile`] from the provided byte source.
     pub fn new(mut input: T) -> std::io::Result<Self> {
         let mut magic = [0u8; 4];
         input.read_exact(&mut magic)?;
@@ -150,12 +161,14 @@ where
     }
 }
 
-impl PolyCubeFile {
+impl PCubeFile {
+    /// Try to create a new [`PCubeFile`] from the given path.
     pub fn new_file(p: impl AsRef<Path>) -> std::io::Result<Self> {
         let file = std::fs::File::open(p.as_ref())?;
         Self::new(file)
     }
 
+    /// Write implementation
     fn write_impl<I, W>(
         write_magic: bool,
         mut cubes: I,
@@ -205,10 +218,14 @@ impl PolyCubeFile {
         Ok(())
     }
 
+    /// Write the [`RawPCube`]s produced by `I` into `W`.
+    ///
+    /// `is_canonical` should only be set to `true` if all cubes in `I`
+    /// are in canonical form.
     pub fn write<I, W>(
-        cubes: I,
         is_canonical: bool,
         compression: Compression,
+        cubes: I,
         write: W,
     ) -> std::io::Result<()>
     where
@@ -218,15 +235,28 @@ impl PolyCubeFile {
         Self::write_impl(true, cubes, is_canonical, compression, write)
     }
 
-    pub fn write_file<C, I>(
-        cubes: I,
+    /// Write the [`RawPCube`]s produced by `I` to the file at `path`.
+    ///
+    /// This will create a new file, or _will_ overwrite the contents of the file at `path`.
+    /// It will not create the parent directories of `path`.
+    ///
+    /// `is_canonical` should only be set to `true` if all cubes in `I`
+    /// are in canonical form.
+    ///
+    /// The difference between [`PCubeFile::write_file`] and [`PCubeFile::write`] is
+    /// that the former writes the magic bytes as the final step, while the latter
+    /// does so immediately.
+    pub fn write_file<I>(
         is_canonical: bool,
         compression: Compression,
-        mut file: File,
+        cubes: I,
+        path: impl AsRef<Path>,
     ) -> std::io::Result<()>
     where
         I: Iterator<Item = RawPCube>,
     {
+        let mut file = std::fs::File::create(path.as_ref())?;
+
         file.seek(std::io::SeekFrom::Start(0))?;
         file.set_len(0)?;
         file.write_all(&[0, 0, 0, 0])?;

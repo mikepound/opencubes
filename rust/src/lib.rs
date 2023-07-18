@@ -2,7 +2,7 @@
 mod test;
 
 mod pcube;
-pub use pcube::{Compression, PolyCubeFile};
+pub use pcube::{Compression, PCubeFile};
 
 mod naive_polycube;
 pub use naive_polycube::NaivePolyCube;

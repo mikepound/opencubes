@@ -65,7 +65,7 @@ void expand(const Cube &c, Hashy &hashes) {
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
                 // std::printf("shape %2d %2d %2d\n\r", res.first.x(), res.first.y(), res.first.z());
-                std::swap(lowestHashCube, rotatedCube);
+                swap(lowestHashCube, rotatedCube);
                 lowestShape = res;
             }
         }

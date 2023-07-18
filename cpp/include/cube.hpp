@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <unordered_set>
 #include <vector>
 
@@ -34,31 +35,61 @@ using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
    protected:
-    std::vector<XYZ> sparse;
+    size_t array_size;
+    std::unique_ptr<XYZ[]> array;
 
    public:
-    Cube() {}
-    explicit Cube(size_t N) : sparse(N) {}
-    Cube(std::initializer_list<XYZ> il) : sparse(il) {}
+    // Empty cube
+    Cube() : array_size(0) {}
 
-    size_t size() const { return sparse.size(); }
+    // Cube with N capacity
+    explicit Cube(size_t N) : array_size(N), array(std::make_unique<XYZ[]>(array_size)) {}
 
-    XYZ *data() { return sparse.data(); }
-    const XYZ *data() const { return sparse.data(); }
+    // Construct from pieces
+    Cube(std::initializer_list<XYZ> il) : Cube(il.size()) { std::copy(il.begin(), il.end(), begin()); }
+
+    Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }
+
+    friend void swap(Cube &a, Cube &b) {
+        using std::swap;
+        swap(a.array, b.array);
+        swap(a.array_size, b.array_size);
+    }
+
+    Cube(Cube &&mv) : Cube() { swap(*this, mv); }
+
+    Cube &operator=(const Cube &copy) {
+        Cube tmp(copy);
+        swap(*this, tmp);
+        return *this;
+    }
+
+    Cube &operator=(Cube &&mv) {
+        swap(*this, mv);
+        return *this;
+    }
+
+    size_t size() const { return array_size; }
+
+    XYZ *data() { return array.get(); }
+    const XYZ *data() const { return array.get(); }
 
     /**
      * Define subset of vector operations for Cube
      * This simplifies the code everywhere else.
      */
-    std::vector<XYZ>::iterator begin() { return sparse.begin(); }
+    XYZ *begin() { return data(); }
 
-    std::vector<XYZ>::iterator end() { return sparse.end(); }
+    XYZ *end() { return data() + size(); }
 
-    std::vector<XYZ>::const_iterator begin() const { return sparse.begin(); }
+    const XYZ *begin() const { return data(); }
 
-    std::vector<XYZ>::const_iterator end() const { return sparse.end(); }
+    const XYZ *end() const { return data() + size(); }
 
-    bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
+    bool operator==(const Cube &rhs) const {
+        if (size() != rhs.size()) return false;
+        return std::mismatch(begin(), end(), rhs.begin()).first == end();
+    }
 
     bool operator<(const Cube &b) const {
         if (size() != b.size()) return size() < b.size();
@@ -71,11 +102,11 @@ struct Cube {
     }
 
     void print() const {
-        for (auto &p : sparse) std::printf("  (%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
+        for (auto &p : *this) std::printf("  (%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
     }
 };
 
 static_assert(std::is_move_assignable_v<Cube>, "Cube must be moveable");
-static_assert(std::is_swappable_v<Cube>, "Cubes must swappable");
+static_assert(std::is_swappable_v<Cube>, "Cube must swappable");
 
 #endif

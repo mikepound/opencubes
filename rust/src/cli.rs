@@ -160,7 +160,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
     };
 
-    let mut file = PolyCubeFile::new(path)?;
+    let mut file = PolyCubeFile::new_file(path)?;
     file.should_canonicalize = false;
     let canonical = file.canonical();
     let len = file.len();
@@ -253,7 +253,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 fn load_cache_file(n: usize) -> Option<PolyCubeFile> {
     let name = format!("cubes_{n}.pcube");
 
-    match PolyCubeFile::new(&name) {
+    match PolyCubeFile::new_file(&name) {
         Ok(file) => Some(file),
         Err(e) => {
             if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
@@ -402,7 +402,7 @@ pub fn convert(opts: &ConvertArgs) {
     println!("Converting file {}", opts.path);
     println!("Final output path: {output_path}");
 
-    let mut input_file = match PolyCubeFile::new(&opts.path) {
+    let mut input_file = match PolyCubeFile::new_file(&opts.path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open input file. Error: {e}");
@@ -483,7 +483,7 @@ pub fn convert(opts: &ConvertArgs) {
 }
 
 fn info(path: &str) {
-    let file = match PolyCubeFile::new(path) {
+    let file = match PolyCubeFile::new_file(path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open file. {e}");

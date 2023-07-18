@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{ErrorKind, Read, Write},
+    io::{ErrorKind, Read, Seek, Write},
     path::Path,
 };
 
@@ -158,18 +158,20 @@ impl PolyCubeFile {
         Self::new(file)
     }
 
-    pub fn write<C, I, W>(
+    fn write_impl<I, W>(
+        write_magic: bool,
         mut cubes: I,
         is_canonical: bool,
         compression: Compression,
         mut write: W,
     ) -> std::io::Result<()>
     where
-        I: Iterator<Item = C>,
-        C: Into<RawPCube>,
+        I: Iterator<Item = RawPCube>,
         W: Write,
     {
-        write.write_all(&MAGIC)?;
+        if write_magic {
+            write.write_all(&MAGIC)?;
+        }
 
         let compression_val = compression.into();
         let orientation_val = if is_canonical { 1 } else { 0 };
@@ -198,9 +200,44 @@ impl PolyCubeFile {
 
         let mut writer = Writer::new(compression, write);
 
-        if let Some(e) = cubes.find_map(|v| v.into().pack(&mut writer).err()) {
+        if let Some(e) = cubes.find_map(|v| v.pack(&mut writer).err()) {
             return Err(e);
         }
+
+        Ok(())
+    }
+
+    pub fn write<I, W>(
+        cubes: I,
+        is_canonical: bool,
+        compression: Compression,
+        write: W,
+    ) -> std::io::Result<()>
+    where
+        I: Iterator<Item = RawPCube>,
+        W: Write,
+    {
+        Self::write_impl(true, cubes, is_canonical, compression, write)
+    }
+
+    pub fn write_file<C, I>(
+        cubes: I,
+        is_canonical: bool,
+        compression: Compression,
+        mut file: File,
+    ) -> std::io::Result<()>
+    where
+        I: Iterator<Item = RawPCube>,
+    {
+        file.seek(std::io::SeekFrom::Start(0))?;
+        file.set_len(0)?;
+        file.write_all(&[0, 0, 0, 0])?;
+
+        Self::write_impl(false, cubes, is_canonical, compression, &mut file)?;
+
+        // Write magic last
+        file.set_len(0)?;
+        file.write_all(&MAGIC)?;
 
         Ok(())
     }

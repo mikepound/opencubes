@@ -175,8 +175,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
     };
 
-    let mut file = PolyCubeFile::new_file(path)?;
-    file.should_canonicalize = false;
+    let file = PolyCubeFile::new_file(path)?;
     let canonical = file.canonical();
     let len = file.len();
 
@@ -187,7 +186,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     };
 
     let exit = |msg: &str| {
-        bar.finish();
+        bar.abandon();
         println!("{msg}");
         std::process::exit(1);
     };
@@ -210,7 +209,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
     for cube in file {
         let cube = match cube {
-            Ok(c) => c,
+            Ok(c) => BasicPolyCube::from(c),
             Err(e) => {
                 println!("Error: Reading the file failed. Error: {e}.");
                 std::process::exit(1);
@@ -229,11 +228,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
 
         let mut form: Option<BasicPolyCube> = None;
-        let canonical_form = || {
-            cube.all_rotations()
-                .max_by(BasicPolyCube::canonical_ordering)
-                .unwrap()
-        };
+        let canonical_form = || cube.canonical_form();
 
         if canonical && validate_canonical {
             if form.get_or_insert_with(|| canonical_form()) != &cube {
@@ -335,7 +330,11 @@ where
                     }
                 };
 
-                let cached: HashSet<_> = cache.filter_map(filter).collect();
+                let cached: HashSet<_> = cache
+                    .filter_map(filter)
+                    .map(BasicPolyCube::from)
+                    .map(|v| v.canonical_form())
+                    .collect();
 
                 if let Some(e) = error {
                     println!("Error occured while loading {name}. Error: {e}");
@@ -361,7 +360,7 @@ where
                 if !std::fs::File::open(name).is_ok() {
                     println!("Saving {} cubes to cache file", next.len());
                     PolyCubeFile::write(
-                        next.iter(),
+                        next.iter().map(Into::into),
                         true,
                         compression.into(),
                         std::fs::File::create(name).unwrap(),
@@ -430,15 +429,13 @@ pub fn convert(opts: &ConvertArgs) {
     println!("Converting file {}", opts.path);
     println!("Final output path: {output_path}");
 
-    let mut input_file = match PolyCubeFile::new_file(&opts.path) {
+    let input_file = match PolyCubeFile::new_file(&opts.path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open input file. Error: {e}");
             std::process::exit(1);
         }
     };
-
-    input_file.should_canonicalize = opts.canonicalize;
 
     if opts.canonicalize {
         println!("Canonicalizing output");
@@ -456,7 +453,7 @@ pub fn convert(opts: &ConvertArgs) {
     };
 
     let exit = |msg: &str| -> ! {
-        bar.finish();
+        bar.abandon();
         eprintln!("{msg}");
         std::process::exit(1);
     };
@@ -489,11 +486,17 @@ pub fn convert(opts: &ConvertArgs) {
             bar.tick();
         }
 
-        match v {
+        let cube = match v {
             Ok(v) => Some(v),
             Err(e) => exit(&format!(
                 "Failed to read all cubes from input file. Error: {e}"
             )),
+        }?;
+
+        if opts.canonicalize {
+            Some(BasicPolyCube::from(cube).canonical_form().into())
+        } else {
+            Some(cube)
         }
     });
 

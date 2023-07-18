@@ -33,18 +33,19 @@ struct HashXYZ {
 using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
-protected:
+   protected:
     std::vector<XYZ> sparse;
-public:
-	Cube() {}
-	explicit Cube(size_t N) : sparse(N) {}
-	Cube(std::initializer_list<XYZ> il) : sparse(il) {}
-	
-	size_t size() const { return sparse.size(); }
-	
-	XYZ* data() { return sparse.data(); }
-	const XYZ* data() const { return sparse.data(); }
-	
+
+   public:
+    Cube() {}
+    explicit Cube(size_t N) : sparse(N) {}
+    Cube(std::initializer_list<XYZ> il) : sparse(il) {}
+
+    size_t size() const { return sparse.size(); }
+
+    XYZ *data() { return sparse.data(); }
+    const XYZ *data() const { return sparse.data(); }
+
     /**
      * Define subset of vector operations for Cube
      * This simplifies the code everywhere else.
@@ -56,18 +57,6 @@ public:
     std::vector<XYZ>::const_iterator begin() const { return sparse.begin(); }
 
     std::vector<XYZ>::const_iterator end() const { return sparse.end(); }
-
-    void reserve(size_t N) { sparse.reserve(N); }
-
-    void empty_from(const Cube &c, int adjust = 0) {
-        sparse.clear();
-        sparse.reserve(c.size() + adjust);
-    }
-
-    template <typename T>
-    T &emplace_back(T &&p) {
-        return sparse.emplace_back(std::forward<T>(p));
-    }
 
     bool operator==(const Cube &rhs) const { return this->sparse == rhs.sparse; }
 
@@ -85,4 +74,8 @@ public:
         for (auto &p : sparse) std::printf("  (%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
     }
 };
+
+static_assert(std::is_move_assignable_v<Cube>, "Cube must be moveable");
+static_assert(std::is_swappable_v<Cube>, "Cubes must swappable");
+
 #endif

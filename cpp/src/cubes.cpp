@@ -30,17 +30,17 @@ void expand(const Cube &c, Hashy &hashes) {
     }
     DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
 
-    Cube newCube;
-    Cube lowestHashCube;
-    Cube rotatedCube;
+    Cube newCube(c.size() + 1);
+    Cube lowestHashCube(newCube.size());
+    Cube rotatedCube(newCube.size());
 
     for (const auto &p : candidates) {
         DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
         int ax = (p.x() < 0) ? 1 : 0;
         int ay = (p.y() < 0) ? 1 : 0;
         int az = (p.z() < 0) ? 1 : 0;
-        newCube.empty_from(c, 1);
-        newCube.emplace_back(XYZ(p.x() + ax, p.y() + ay, p.z() + az));
+        auto put = newCube.begin();
+        *put++ = XYZ(p.x() + ax, p.y() + ay, p.z() + az);
         XYZ shape(p.x() + ax, p.y() + ay, p.z() + az);
         for (const auto &np : c) {
             auto nx = np.x() + ax;
@@ -49,11 +49,9 @@ void expand(const Cube &c, Hashy &hashes) {
             if (nx > shape[0]) shape[0] = nx;
             if (ny > shape[1]) shape[1] = ny;
             if (nz > shape[2]) shape[2] = nz;
-            newCube.emplace_back(XYZ(nx, ny, nz));
+            *put++ = XYZ(nx, ny, nz);
         }
         DEBUG_PRINTF("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
-
-        rotatedCube.empty_from(newCube);
 
         // check rotations
         XYZ lowestShape;

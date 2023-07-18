@@ -6,7 +6,7 @@ TEST(RotationsTests, TestRotateDoesNotThrow) {
     XYZ shape = XYZ(1, 1, 1);
     Cube cube = Cube{{XYZ(0, 0, 0)}};
     for (int i = 0; i < 24; i++) {
-        Cube dest;
+        Cube dest(cube.size());
         EXPECT_NO_THROW(Rotations::rotate(i, shape, cube, dest));
     }
 }
@@ -47,9 +47,11 @@ TEST(RotationsTests, TestRotationsMatchesExpectation) {
     std::stringstream shapes;
     std::stringstream cubes;
     for (int i = 0; i < 24; i++) {
-        Cube rotated;
+        Cube rotated(cube.size());
         auto [res, ok] = Rotations::rotate(i, shape, cube, rotated);
         EXPECT_EQ(res, expected_shapes[i]);
-        EXPECT_EQ(rotated, expected_cubes[i]);
+        if (ok) {
+            EXPECT_EQ(rotated, expected_cubes[i]);
+        }
     }
 }

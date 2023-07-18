@@ -23,8 +23,16 @@ This parameter is optional. The default value is '0'.
 ```
 
 ## building (cmake)
+To build a release version (with optimisations , default)
 ```bash
 mkdir build && cd build
 cmake ..
+make
+```
+
+To build a Debug version (if you are debugging a change)
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Debug
 make
 ```

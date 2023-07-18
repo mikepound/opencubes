@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.14)
 project(cubes CXX)
 
+# default to release build because speed maters.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release")
+endif()
+
 include_directories("include")
 include_directories("libraries")
 

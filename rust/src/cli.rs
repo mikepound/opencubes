@@ -371,11 +371,14 @@ where
             let bar = make_bar(current.len() as u64);
             bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
+            let start = Instant::now();
+
             let next = expansion_fn(&bar, current.iter());
 
             bar.set_message(format!(
-                "base polycubes expanded. Found {} unique expansions.",
-                next.len()
+                "Found {} unique expansions in {} ms.",
+                next.len(),
+                start.elapsed().as_millis(),
             ));
 
             bar.finish();

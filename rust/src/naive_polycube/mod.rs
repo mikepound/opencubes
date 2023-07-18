@@ -127,7 +127,6 @@ impl NaivePolyCube {
         check_next!(dim_2);
         check_next!(dim_3);
 
-        // I don't think this does what I expect it to do...
         self.filled.cmp(&other.filled)
     }
 

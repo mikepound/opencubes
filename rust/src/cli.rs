@@ -7,7 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, NaivePolyCube, PolyCubeFile};
+use opencubes::{make_bar, NaivePolyCube, PCubeFile};
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -160,7 +160,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
     };
 
-    let file = PolyCubeFile::new_file(path)?;
+    let file = PCubeFile::new_file(path)?;
     let canonical = file.canonical();
     let len = file.len();
 
@@ -245,10 +245,10 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     Ok(())
 }
 
-fn load_cache_file(n: usize) -> Option<PolyCubeFile> {
+fn load_cache_file(n: usize) -> Option<PCubeFile> {
     let name = format!("cubes_{n}.pcube");
 
-    match PolyCubeFile::new_file(&name) {
+    match PCubeFile::new_file(&name) {
         Ok(file) => Some(file),
         Err(e) => {
             if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
@@ -344,11 +344,11 @@ where
                 let name = &format!("cubes_{i}.pcube");
                 if !std::fs::File::open(name).is_ok() {
                     println!("Saving {} cubes to cache file", next.len());
-                    PolyCubeFile::write(
-                        next.iter().map(Into::into),
+                    PCubeFile::write_file(
                         true,
                         compression.into(),
-                        std::fs::File::create(name).unwrap(),
+                        next.iter().map(Into::into),
+                        name,
                     )
                     .unwrap();
                 }
@@ -401,7 +401,7 @@ pub fn convert(opts: &ConvertArgs) {
     println!("Converting file {}", opts.path);
     println!("Final output path: {output_path}");
 
-    let input_file = match PolyCubeFile::new_file(&opts.path) {
+    let input_file = match PCubeFile::new_file(&opts.path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open input file. Error: {e}");
@@ -437,11 +437,6 @@ pub fn convert(opts: &ConvertArgs) {
     output_path_temp.pop();
     output_path_temp.push(filename);
 
-    let output_file = match std::fs::File::create(&output_path_temp) {
-        Ok(f) => f,
-        Err(e) => exit(&format!("Failed to create temporary output file. {e}")),
-    };
-
     let mut total_read = 0;
     let mut last_tick = Instant::now();
     bar.tick();
@@ -472,7 +467,7 @@ pub fn convert(opts: &ConvertArgs) {
         }
     });
 
-    match PolyCubeFile::write(input, canonical, opts.compression.into(), output_file) {
+    match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
         Ok(_) => {}
         Err(e) => exit(&format!("Failed. Error: {e}.")),
     }
@@ -486,7 +481,7 @@ pub fn convert(opts: &ConvertArgs) {
 }
 
 fn info(path: &str) {
-    let file = match PolyCubeFile::new_file(path) {
+    let file = match PCubeFile::new_file(path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open file. {e}");

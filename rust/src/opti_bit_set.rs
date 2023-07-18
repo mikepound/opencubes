@@ -53,13 +53,18 @@ impl PartialOrd for CubeMap {
 }
 
 impl CubeMap {
+    /// returns 1 if it block at xyz exists
+    /// returns 0 if it doesnt
     pub fn get_block(&self, x: usize, y: usize, z: usize) -> CubeRow {
         (self.cube_map[z * (self.y as usize + 1) + y] >> x) & 1
     }
     #[cfg(feature = "smallset")]
+    /// sets the block at xyz to exist
     pub fn set_block(&mut self, x: usize, y: usize, z: usize) {
         self.cube_map[z * (self.y as usize + 1) + y] |= 1 << x;
     }
+    /// set a block to the bit v
+    /// IMORTANT: Sets, does not unset, performs an | on the vale will never clear even on set v = 0
     pub fn set_block_to(&mut self, x: usize, y: usize, z: usize, v: CubeRow) {
         self.cube_map[z * (self.y as usize + 1) + y] |= v << x;
     }
@@ -69,6 +74,7 @@ impl CubeMap {
         }
     }
     #[cfg(feature = "diagnostics")]
+    /// ensure expected number of cubes are set, only used as an integrity check
     pub fn count_cubes(&self) -> usize {
         let mut c = 0;
         for i in 0..36 {
@@ -81,6 +87,7 @@ impl CubeMap {
         c
     }
     #[cfg(feature = "diagnostics")]
+    /// ensure no blocks are set outside expected area, only used as an integrity check
     pub fn validate_bounds(&self) -> bool {
         for x in (self.x + 1)..MAX_X as u32 {
             for y in 0..=self.y {
@@ -100,6 +107,7 @@ impl CubeMap {
     }
     
     #[cfg(feature = "diagnostics")]
+    /// find an existing block to seed continuity check
     fn find_a_block(&self) -> Dim {
         for y in 0..=self.y {
             for z in 0..=self.z {
@@ -124,6 +132,7 @@ impl CubeMap {
     }
 
     #[cfg(feature = "diagnostics")]
+    /// ensure all blocks are connected, only used as an integrity check
     pub fn validate_continuity(&self) -> bool {
         let mut to_visit = HashSet::new();
         let mut map = *self;
@@ -191,11 +200,14 @@ impl CubeMap {
     }
 }
 
+/// cube maps as packed 5 bit x,y,z values for smaller memory foot print when stored
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 struct CubeMapPos {
     cubes: [u16; 16]
 }
+
 #[cfg(feature = "smallset")]
+///converts a cube map to  map pos for hashset storage slow (+10% runtime combined with decode last measured)
 fn cube_map_to_cube_map_pos(map: &CubeMap) -> CubeMapPos {
     let mut pos = CubeMapPos {cubes: [0; 16]};
     let mut i = 0;
@@ -219,7 +231,9 @@ fn cube_map_to_cube_map_pos(map: &CubeMap) -> CubeMapPos {
     }
     pos
 }
+
 #[cfg(feature = "smallset")]
+///converts a mappos from hashset storage to a cube map
 fn cube_map_from_cube_map_pos(map: &CubeMapPos) -> CubeMap {
     let mut dst = CubeMap {
         x: 0,
@@ -242,6 +256,7 @@ fn cube_map_from_cube_map_pos(map: &CubeMapPos) -> CubeMap {
         map.cubes[i - 1] >> 15 != 1
     } {}
     i = 0;
+    //do {} while (map.cubes[i - 1] >> 15 != 1);
     while {
         let v = map.cubes[i];
         let x = (v & 0x1f) as usize;
@@ -279,6 +294,7 @@ fn insert_map(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "
     seen.insert(work_map);
 }
 
+/// insert a cube towards +X
 #[inline]
 fn expand_cube_map_left(map: &CubeMap, yz: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -287,6 +303,7 @@ fn expand_cube_map_left(map: &CubeMap, yz: usize, offset: u32) -> CubeMap {
     work_map
 }
 
+/// insert a cube towards -X 
 #[inline]
 fn expand_cube_map_right(map: &CubeMap, yz: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -302,6 +319,7 @@ fn expand_cube_map_right(map: &CubeMap, yz: usize, offset: u32) -> CubeMap {
     work_map
 }
 
+/// insert a cube towards +Y 
 #[inline]
 fn expand_cube_map_up(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -321,6 +339,7 @@ fn expand_cube_map_up(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap
     work_map
 }
 
+/// insert a cube towards -Y 
 #[inline]
 fn expand_cube_map_down(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -342,6 +361,7 @@ fn expand_cube_map_down(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeM
     work_map
 }
 
+/// insert a cube towards +Z 
 #[inline]
 fn expand_cube_map_in(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -350,6 +370,7 @@ fn expand_cube_map_in(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap
     work_map
 }
 
+/// insert a cube towards -Z 
 #[inline]
 fn expand_cube_map_out(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMap {
     let mut work_map = *map;
@@ -368,6 +389,7 @@ fn expand_cube_map_out(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMa
     work_map
 }
 
+/// expand each cube +/-1 X where possible
 #[inline]
 fn expand_xs(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize) {
     for yz in 0..(((map.y + 1) * (map.z + 1)) as usize) {
@@ -387,6 +409,7 @@ fn expand_xs(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "d
     }
 }
 
+/// expand each cube +/-1 Y where possible
 #[inline]
 fn expand_ys(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize) {
     for z in 0..=map.z as usize {
@@ -416,6 +439,7 @@ fn expand_ys(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "d
     }
 }
 
+/// expand each cube +/-1 Z where possible
 #[inline]
 fn expand_zs(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize) {
     for z in 0..=map.z as usize {
@@ -440,6 +464,7 @@ fn expand_zs(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "d
     }
 }
 
+/// expand in X, Y and Z abiding by the X >= Y >= Z constraint
 #[inline]
 fn do_cube_expansion(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize) {
     expand_xs(map, seen, #[cfg(feature = "diagnostics")] depth);
@@ -451,6 +476,7 @@ fn do_cube_expansion(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feat
     }
 }
 
+/// expand cube, rotate around square faces to catch adgecases that were getting missed due to the X >= Y >= Z constraint
 #[inline]
 fn expand_cube_map(map: &CubeMap, seen: &mut HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize) {
     do_cube_expansion(map, seen, #[cfg(feature = "diagnostics")] depth);
@@ -512,6 +538,7 @@ fn to_dim(cm: &CubeMap) -> Dim {
     }
 }
 
+//expand all polycubes in set n-1
 fn expand_cube_set(in_set: &HashSet<CubeEncoding>, #[cfg(feature = "diagnostics")] depth: usize, out_set: &mut HashSet<CubeEncoding>) {
     for map in in_set.iter() {
         #[cfg(feature = "smallset")]
@@ -557,6 +584,7 @@ pub fn gen_polycubes(n: usize) -> usize {
     insert_map(&unit_cube, &mut seeds, #[cfg(feature = "diagnostics")] 2);
     for i in 3..=n as usize {
         expand_cube_set(&seeds, #[cfg(feature = "diagnostics")] i, &mut dst);
+        //if diagnostics enabled panic if the returned values are wrong
         #[cfg(feature = "diagnostics")]
         if i == 3 && dst.len() != 2 {
             panic!("{} supposed to have {} elems not {}", i, 2, dst.len())

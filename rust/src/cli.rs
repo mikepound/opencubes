@@ -150,24 +150,6 @@ impl From<Compression> for opencubes::Compression {
     }
 }
 
-#[derive(Clone, Args)]
-pub struct EnumerateOpts {
-    /// The N value for which to calculate all unique polycubes.
-    pub n: usize,
-
-    /// Disable parallelism.
-    #[clap(long, short = 'p')]
-    pub no_parallelism: bool,
-
-    /// Don't use the cache
-    #[clap(long, short = 'c')]
-    pub no_cache: bool,
-
-    /// Compress written cache files
-    #[clap(long, short = 'z', value_enum, default_value = "none")]
-    pub cache_compression: Compression,
-}
-
 pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let path = &opts.path;
     let uniqueness = !opts.no_uniqueness;
@@ -400,66 +382,44 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let start = Instant::now();
 
-<<<<<<< HEAD:rust/src/cli.rs
-    let cubes = if opts.no_parallelism {
-        unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions(true, n, current)
-            },
-            cache,
-            n,
-            opts.cache_compression,
-        )
-    } else {
-        unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions_rayon(true, n, current)
-            },
-            cache,
-            n,
-            opts.cache_compression,
-        )
-=======
     //Select enumeration function to run
-    let cubes = match (opts.mode, opts.no_parallelism) {
+    let cubes_len = match (opts.mode, opts.no_parallelism) {
         (EnumerationMode::Standard, true) => {
-            unique_expansions(
+            let cubes = unique_expansions(
                 |n, current: std::slice::Iter<'_, PolyCube>| {
                     PolyCube::unique_expansions(true, n, current)
                 },
                 cache,
-                alloc_tracker.clone(),
                 n,
                 opts.cache_compression,
-            )
-                
-        }
+            );
+            cubes.len()  
+        },
         (EnumerationMode::Standard, false) => {
-            unique_expansions(
+            let cubes = unique_expansions(
                 |n, current: std::slice::Iter<'_, PolyCube>| {
                     PolyCube::unique_expansions_rayon(true, n, current)
                 },
                 cache,
-                alloc_tracker.clone(),
                 n,
                 opts.cache_compression,
-            )
-        }
-        (EnumerationMode::RotationReduced, true) => {
-            //opti_bit_set::gen_polycubes(n)
-            todo!()
+            );
+            cubes.len()  
         },
-        (EnumerationMode::RotationReduced, false) => todo!(),
-        (EnumerationMode::PointList, true) => todo!(),
-        (EnumerationMode::PointList, false) => todo!(),
->>>>>>> 11b716d (save merge progress for rebase):rust/src/main.rs
+        (EnumerationMode::RotationReduced, true) => {
+            opti_bit_set::gen_polycubes(n)
+        },
+        (EnumerationMode::RotationReduced, false) => {
+            panic!("parallel rotation reduced not supported")
+        },
+        (EnumerationMode::PointList, para) => {
+            pointlist::gen_polycubes(n, !para)
+        },
     };
 
     let duration = start.elapsed();
 
-    let cubes = cubes.len();
-
-    println!("Unique polycubes found for N = {n}: {cubes}.",);
+    println!("Unique polycubes found for N = {n}: {cubes_len}.",);
     println!("Duration: {} ms", duration.as_millis());
 }
 

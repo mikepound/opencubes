@@ -68,7 +68,7 @@ void Cache::save(std::string path, Hashy &hashes, uint8_t n) {
         for (auto &subset : hashes.byshape[key].byhash)
             for (const auto &c : subset.set) {
                 if constexpr (sizeof(XYZ) == XYZ_SIZE) {
-                    ofs.write((const char *)c.sparse.data(), sizeof(XYZ) * c.sparse.size());
+                    ofs.write((const char *)c.data(), sizeof(XYZ) * c.size());
                 } else {
                     for (const auto &p : c) {
                         ofs.write((const char *)p.data, XYZ_SIZE);
@@ -132,8 +132,7 @@ Hashy Cache::load(std::string path, uint32_t extractShape) {
             exit(-1);
         }
         for (uint32_t j = 0; j < numCubes; ++j) {
-            Cube next;
-            next.sparse.resize(header.n);
+            Cube next(header.n);
             for (uint32_t k = 0; k < header.n; ++k) {
                 // check if buf contains next XYZ
                 uint64_t curr_offset = j * cubeSize + k * XYZ_SIZE;
@@ -148,9 +147,9 @@ Hashy Cache::load(std::string path, uint32_t extractShape) {
                     }
                 }
 
-                next.sparse[k].data[0] = buf[curr_offset - buf_offset + 0];
-                next.sparse[k].data[1] = buf[curr_offset - buf_offset + 1];
-                next.sparse[k].data[2] = buf[curr_offset - buf_offset + 2];
+                next.data()[k].data[0] = buf[curr_offset - buf_offset + 0];
+                next.data()[k].data[1] = buf[curr_offset - buf_offset + 1];
+                next.data()[k].data[2] = buf[curr_offset - buf_offset + 2];
             }
             cubes.insert(next, shape);
         }

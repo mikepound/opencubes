@@ -15,28 +15,37 @@
 const int PERF_STEP = 500;
 
 void expand(const Cube &c, Hashy &hashes) {
-    XYZSet candidates;
+    // Get expanded Cube XYZ
+    std::vector<XYZ> candidates, tmp;
     candidates.reserve(c.size() * 6);
     for (const auto &p : c) {
-        candidates.emplace(XYZ(p.x() + 1, p.y(), p.z()));
-        candidates.emplace(XYZ(p.x() - 1, p.y(), p.z()));
-        candidates.emplace(XYZ(p.x(), p.y() + 1, p.z()));
-        candidates.emplace(XYZ(p.x(), p.y() - 1, p.z()));
-        candidates.emplace(XYZ(p.x(), p.y(), p.z() + 1));
-        candidates.emplace(XYZ(p.x(), p.y(), p.z() - 1));
+        candidates.emplace_back(XYZ(p.x() + 1, p.y(), p.z()));
+        candidates.emplace_back(XYZ(p.x() - 1, p.y(), p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y() + 1, p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y() - 1, p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y(), p.z() + 1));
+        candidates.emplace_back(XYZ(p.x(), p.y(), p.z() - 1));
     }
-    for (const auto &p : c) {
-        candidates.erase(p);
-    }
+    std::sort(candidates.begin(), candidates.end());
+    auto end = std::unique(candidates.begin(), candidates.end());
+    // Copy XYZ not in Cube into tmp
+    tmp.reserve(std::distance(candidates.begin(), end));
+    std::set_difference(candidates.begin(), end, c.begin(), c.end(), std::back_inserter(tmp));
+    candidates = std::move(tmp);
+
     DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
+
+    Cube newCube(c.size() + 1);
+    Cube lowestHashCube(newCube.size());
+    Cube rotatedCube(newCube.size());
+
     for (const auto &p : candidates) {
         DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
         int ax = (p.x() < 0) ? 1 : 0;
         int ay = (p.y() < 0) ? 1 : 0;
         int az = (p.z() < 0) ? 1 : 0;
-        Cube newCube;
-        newCube.reserve(c.size() + 1);
-        newCube.emplace_back(XYZ(p.x() + ax, p.y() + ay, p.z() + az));
+        auto put = newCube.begin();
+        *put++ = XYZ(p.x() + ax, p.y() + ay, p.z() + az);
         XYZ shape(p.x() + ax, p.y() + ay, p.z() + az);
         for (const auto &np : c) {
             auto nx = np.x() + ax;
@@ -45,25 +54,24 @@ void expand(const Cube &c, Hashy &hashes) {
             if (nx > shape[0]) shape[0] = nx;
             if (ny > shape[1]) shape[1] = ny;
             if (nz > shape[2]) shape[2] = nz;
-            newCube.emplace_back(XYZ(nx, ny, nz));
+            *put++ = XYZ(nx, ny, nz);
         }
         DEBUG_PRINTF("shape %2d %2d %2d\n\r", shape[0], shape[1], shape[2]);
 
         // check rotations
-        Cube lowestHashCube;
         XYZ lowestShape;
         bool none_set = true;
         for (int i = 0; i < 24; ++i) {
-            auto res = Rotations::rotate(i, shape, newCube);
-            if (res.second.size() == 0) continue;  // rotation generated violating shape
-            Cube rotatedCube{std::move(res.second)};
+            auto [res, ok] = Rotations::rotate(i, shape, newCube, rotatedCube);
+            if (!ok) continue;  // rotation generated violating shape
+
             std::sort(rotatedCube.begin(), rotatedCube.end());
 
             if (none_set || lowestHashCube < rotatedCube) {
                 none_set = false;
                 // std::printf("shape %2d %2d %2d\n\r", res.first.x(), res.first.y(), res.first.z());
-                lowestHashCube = std::move(rotatedCube);
-                lowestShape = res.first;
+                swap(lowestHashCube, rotatedCube);
+                lowestShape = res;
             }
         }
         hashes.insert(lowestHashCube, lowestShape);
@@ -108,7 +116,7 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache) {
         return hashes;
     } else if (n == 2) {
         hashes.init(2);
-        hashes.insert(Cube{{XYZ(0, 0, 0), XYZ(0, 0, 1)}}, XYZ(0, 0, 1));
+        hashes.insert(Cube{XYZ(0, 0, 0), XYZ(0, 0, 1)}, XYZ(0, 0, 1));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         return hashes;
     }

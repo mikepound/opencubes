@@ -36,10 +36,9 @@ struct Hashy {
             set.emplace(std::forward<CubeT>(c));
         }
 
-        template <typename CubeT>
-        bool contains(CubeT &&c) {
+        bool contains(const Cube &c) {
             std::shared_lock lock(set_mutex);
-            return set.count(std::forward<CubeT>(c));
+            return set.count(c);
         }
 
         auto size() {
@@ -56,7 +55,7 @@ struct Hashy {
             HashCube hash;
             auto idx = hash(c) % NUM;
             auto &set = byhash[idx];
-            if (!set.contains(std::forward<CubeT>(c))) set.insert(std::forward<CubeT>(c));
+            if (!set.contains(c)) set.insert(std::forward<CubeT>(c));
             // printf("new size %ld\n\r", byshape[shape].size());
         }
 

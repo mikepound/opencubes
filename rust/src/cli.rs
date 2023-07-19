@@ -9,9 +9,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 
-mod opti_bit_set;
 mod pointlist;
 mod polycube_reps;
+mod rotation_reduced;
 mod rotations;
 
 fn unknown_bar() -> ProgressBar {
@@ -414,7 +414,16 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let start = Instant::now();
 
-    let (seed_list, startn) = load_cache(n);
+    let (seed_list, startn) = if cache {
+        load_cache(n)
+    } else {
+        let mut base = NaivePolyCube::new(1, 1, 1);
+        base.set(0, 0, 0).unwrap();
+
+        let current = [base].to_vec();
+        //calculate from 2 because 1 is in the vec
+        (current, 2)
+    };
 
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {
@@ -445,15 +454,20 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::RotationReduced, para) => {
+            if n > 16 {
+                println!("n > 16 not supported for rotation reduced");
+                return;
+            }
             if !para {
                 println!("no parallel implementation for rotation-reduced, running single threaded")
             }
-            opti_bit_set::gen_polycubes(n)
-            // opti_bit_set::gen_polycubes(n
-            //     seed_list,
-            //     startn)
+            rotation_reduced::gen_polycubes(n)
         }
         (EnumerationMode::PointList, para) => {
+            if n > 16 {
+                println!("n > 16 not supported for point-list");
+                return;
+            }
             let cubes = pointlist::gen_polycubes(
                 n,
                 cache,

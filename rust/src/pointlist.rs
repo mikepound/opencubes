@@ -1,13 +1,16 @@
-use std::{cmp::max, sync::Mutex, time::Instant};
+use std::{cmp::max, time::Instant};
 
 use crate::{
+    make_bar,
     polycube_reps::{map_pos_to_naive, naive_to_map_pos, CubeMapPos, CubeMapPosPart, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
     Compression,
 };
 
 use hashbrown::{HashMap, HashSet};
+use indicatif::ProgressBar;
 use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
+use parking_lot::RwLock;
 use rayon::prelude::*;
 
 ///structure to store the polycubes
@@ -16,7 +19,7 @@ use rayon::prelude::*;
 /// used for reducing mutex preasure on insertion
 /// used as buckets for parallelising
 /// however both of these give suboptomal performance due to the uneven distribution
-type MapStore = HashMap<(Dim, u16), Mutex<HashSet<CubeMapPosPart>>>;
+type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
@@ -28,7 +31,7 @@ fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
     }
     match store.get(&(*dim, map.cubes[0])) {
         Some(map) => {
-            map.lock().unwrap().insert(body);
+            map.write().insert(body);
         }
         None => {
             panic!(
@@ -224,14 +227,14 @@ fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize)
 /// helper for inner_exp in expand_cube_set it didnt like going directly in the closure
 fn expand_cube_sub_set(
     (shape, start): &(Dim, u16),
-    body: &Mutex<HashSet<CubeMapPosPart>>,
+    body: &RwLock<HashSet<CubeMapPosPart>>,
     count: usize,
     dst: &MapStore,
 ) {
     let mut seed = CubeMapPos {
         cubes: [*start, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     };
-    for seed_body in body.lock().unwrap().iter() {
+    for seed_body in body.read().iter() {
         for i in 1..count {
             seed.cubes[i] = seed_body.cubes[i - 1];
         }
@@ -239,20 +242,31 @@ fn expand_cube_sub_set(
     }
 }
 
-fn expand_cube_set(seeds: &MapStore, count: usize, dst: &mut MapStore, parallel: bool) {
+fn expand_cube_set(
+    seeds: &MapStore,
+    count: usize,
+    dst: &mut MapStore,
+    bar: &mut ProgressBar,
+    parallel: bool,
+) {
     // set up the dst sets before starting parallel processing so accessing doesnt block a global mutex
     for x in 0..=count + 1 {
         for y in 0..=(count + 1) / 2 {
             for z in 0..=(count + 1) / 3 {
                 for i in 0..(y + 1) * 32 {
-                    dst.insert((Dim { x, y, z }, i as u16), Mutex::new(HashSet::new()));
+                    dst.insert((Dim { x, y, z }, i as u16), RwLock::new(HashSet::new()));
                 }
             }
         }
     }
 
+    let bar = RwLock::new(bar);
+    bar.write()
+        .set_message(format!("seed subsets expanded for N = {}...", count + 1));
+
     let inner_exp = |(ss, body)| {
         expand_cube_sub_set(ss, body, count, dst);
+        bar.write().inc(1);
     };
 
     //use parallel iterator or not to run expand_cube_set
@@ -262,7 +276,7 @@ fn expand_cube_set(seeds: &MapStore, count: usize, dst: &mut MapStore, parallel:
         seeds.iter().for_each(inner_exp);
     }
     //retain only subsets that have polycubes
-    dst.retain(|_, v| v.lock().unwrap().len() > 0);
+    dst.retain(|_, v| v.read().len() > 0);
 }
 
 /// count the number of polycubes across all subsets
@@ -280,7 +294,7 @@ fn count_polycubes(maps: &MapStore) -> usize {
         );
     }
     for (_, body) in maps.iter() {
-        total += body.lock().unwrap().len()
+        total += body.read().len()
     }
     total
 }
@@ -291,7 +305,7 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
     while let Some(((dim, head), body)) = maps.iter().next() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
-            let bod = body.lock().unwrap();
+            let bod = body.read();
             let mut cmp = CubeMapPos { cubes: [0; 16] };
             cmp.cubes[0] = *head;
             for b in bod.iter() {
@@ -311,10 +325,11 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
 /// distructively move the data from hashset to vector
 fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
     let mut v = Vec::new();
+
     for ((_, head), body) in maps.iter() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
-            let bod = body.lock().unwrap();
+            let bod = body.read();
             let mut cmp = CubeMapPos { cubes: [0; 16] };
             cmp.cubes[0] = *head;
             for b in bod.iter() {
@@ -345,7 +360,7 @@ pub fn gen_polycubes(
         let (seed, dim) = naive_to_map_pos(seed);
         if !seeds.contains_key(&(dim, seed.cubes[0])) {
             for i in 0..(dim.y * 32 + dim.x + 1) {
-                seeds.insert((dim, i as u16), Mutex::new(HashSet::new()));
+                seeds.insert((dim, i as u16), RwLock::new(HashSet::new()));
             }
         }
         insert_map(&seeds, &dim, &seed, calculate_from - 1);
@@ -354,8 +369,10 @@ pub fn gen_polycubes(
     current.shrink_to_fit();
 
     for i in calculate_from..=n as usize {
+        let mut bar = make_bar(seeds.len() as u64);
+        bar.set_message(format!("seed subsets expanded for N = {}...", i));
         let mut dst = MapStore::new();
-        expand_cube_set(&mut seeds, i - 1, &mut dst, parallel);
+        expand_cube_set(&mut seeds, i - 1, &mut dst, &mut bar, parallel);
         seeds = dst;
 
         if use_cache && i < n {
@@ -377,13 +394,14 @@ pub fn gen_polycubes(
 
         let t1_stop = Instant::now();
         let time = t1_stop.duration_since(t1_start).as_micros();
-        println!(
-            "Found {} unique polycube(s) at n = {} seeds_len {}",
+        bar.set_message(format!(
+            "Found {} unique expansions (N = {i}) in  {}.{:06}s",
             count_polycubes(&seeds),
-            i,
-            seeds.len()
-        );
-        println!("Elapsed time: {}.{:06}s", time / 1000000, time % 1000000);
+            time / 1000000,
+            time % 1000000
+        ));
+
+        bar.finish();
     }
     // exported eperately for memory concerns. already quite a lot more probably but not much I can do
     let next = move_polycubes_to_vec(&mut seeds);

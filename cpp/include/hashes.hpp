@@ -69,7 +69,7 @@ struct Hashy {
         }
     };
 
-    std::map<XYZ, Subhashy<8>> byshape;
+    std::map<XYZ, Subhashy<32>> byshape;
     void init(int n) {
         // create all subhashy which will be needed for N
         for (int x = 0; x < n; ++x)

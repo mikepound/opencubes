@@ -25,6 +25,16 @@ struct XYZ {
     constexpr int8_t z() const { return data[2]; }
     constexpr int8_t &operator[](int offset) { return data[offset]; }
     constexpr int8_t operator[](int offset) const { return data[offset]; }
+    friend XYZ operator+(const XYZ &a, const XYZ &b) {
+        XYZ ret = a;
+        ret += b;
+        return ret;
+    }
+    void operator+=(const XYZ &b) {
+        data[0] += b.data[0];
+        data[1] += b.data[1];
+        data[2] += b.data[2];
+    }
 };
 
 struct HashXYZ {

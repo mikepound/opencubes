@@ -25,8 +25,11 @@ struct Cache {
         uint64_t size;     // in bytes should be multiple of XYZ_SIZE
     };
 
-    static void save(std::string path, Hashy &hashes, uint8_t n);
+    static void save(std::string path, Hashy& hashes, uint8_t n);
     static Hashy load(std::string path, uint32_t extractShape = ALL_SHAPES);
+
+    int filedesc;
+    void* mmap_ptr;
 };
 
 #endif

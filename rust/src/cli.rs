@@ -7,7 +7,10 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
+use opencubes::{
+    naive_polycube::NaivePolyCube,
+    pcube::{PCubeFile, RawPCube},
+};
 
 mod pointlist;
 mod polycube_reps;
@@ -294,7 +297,7 @@ fn load_cache_file(n: usize) -> Option<PCubeFile> {
 
 /// load closes cache file to n into a vec
 /// returns a vec and the next order above the found cache file
-fn load_cache(n: usize) -> (Vec<NaivePolyCube>, usize) {
+fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
     let calculate_from = 2;
 
     for n in (calculate_from..n).rev() {
@@ -327,11 +330,7 @@ fn load_cache(n: usize) -> (Vec<NaivePolyCube>, usize) {
             }
         };
 
-        let cached: HashSet<_> = cache
-            .filter_map(filter)
-            .map(NaivePolyCube::from)
-            .map(|v| v.canonical_form())
-            .collect();
+        let cached: HashSet<_> = cache.filter_map(filter).collect();
 
         if let Some(e) = error {
             println!("Error occured while loading {name}. Error: {e}");
@@ -347,10 +346,10 @@ fn load_cache(n: usize) -> (Vec<NaivePolyCube>, usize) {
     }
 
     println!("no cache file found reverting to start building from n=1");
-    let mut base = NaivePolyCube::new(1, 1, 1);
-    base.set(0, 0, 0).unwrap();
+    let mut base = RawPCube::new_empty(1, 1, 1);
+    base.set(0, 0, 0, true);
 
-    let current = [base].to_vec();
+    let current = [base.clone()].to_vec();
     //calculate from 2 because 1 is in the vec
     (current, 2)
 }
@@ -360,7 +359,7 @@ fn unique_expansions<F>(
     use_cache: bool,
     n: usize,
     compression: Compression,
-    mut current: Vec<NaivePolyCube>,
+    current: Vec<RawPCube>,
     calculate_from: usize,
 ) -> Vec<NaivePolyCube>
 where
@@ -369,7 +368,11 @@ where
     if n == 0 {
         return Vec::new();
     }
-
+    let mut current = current
+        .into_iter()
+        .map(NaivePolyCube::from)
+        .map(|v| v.canonical_form())
+        .collect::<Vec<_>>();
     for i in calculate_from..=n {
         let bar = make_bar(current.len() as u64);
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
@@ -417,8 +420,8 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let (seed_list, startn) = if cache {
         load_cache(n)
     } else {
-        let mut base = NaivePolyCube::new(1, 1, 1);
-        base.set(0, 0, 0).unwrap();
+        let mut base = RawPCube::new_empty(1, 1, 1);
+        base.set(0, 0, 0, true);
 
         let current = [base].to_vec();
         //calculate from 2 because 1 is in the vec

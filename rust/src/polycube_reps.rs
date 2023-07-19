@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use opencubes::naive_polycube::NaivePolyCube;
+use opencubes::pcube::RawPCube;
 
 use crate::rotations::{map_coord, MatrixCol};
 
@@ -15,119 +15,153 @@ pub struct CubeMapPos {
 
 /// Conversion function to assist with loading Polycubes from cache file to point-list implementation
 /// Returned cubes may not be fully canonicalized (X >= Y >= Z guarenteed but not exact rotation)
-pub fn naive_to_map_pos(src: &NaivePolyCube) -> (CubeMapPos, Dim) {
-    let mut dst = CubeMapPos { cubes: [0; 16] };
-    let (x, y, z) = src.dims();
-    let dim = Dim {
-        x: x - 1,
-        y: y - 1,
-        z: z - 1,
-    };
+impl From<&RawPCube> for CubeMapPos {
+    fn from(src: &RawPCube) -> Self {
+        let mut dst = CubeMapPos { cubes: [0; 16] };
+        let (x, y, z) = src.dims();
+        let x = x as usize;
+        let y = y as usize;
+        let z = z as usize;
+        let dim = Dim {
+            x: x as usize - 1,
+            y: y as usize - 1,
+            z: z as usize - 1,
+        };
 
-    //correction matrix to convert to canonical dimension. I dont like it but it works
-    let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
-        (MatrixCol::XP, MatrixCol::YP, MatrixCol::ZP, dim)
-    } else if x >= z && z >= y {
-        (
-            MatrixCol::XP,
-            MatrixCol::ZP,
-            MatrixCol::YN,
-            Dim {
-                x: x - 1,
-                y: z - 1,
-                z: y - 1,
-            },
-        )
-    } else if y >= x && x >= z {
-        (
-            MatrixCol::YP,
-            MatrixCol::XP,
-            MatrixCol::ZN,
-            Dim {
-                x: y - 1,
-                y: x - 1,
-                z: z - 1,
-            },
-        )
-    } else if y >= z && z >= x {
-        (
-            MatrixCol::YP,
-            MatrixCol::ZP,
-            MatrixCol::XP,
-            Dim {
-                x: y - 1,
-                y: z - 1,
-                z: x - 1,
-            },
-        )
-    } else if z >= x && x >= y {
-        (
-            MatrixCol::ZN,
-            MatrixCol::XP,
-            MatrixCol::YN,
-            Dim {
-                x: z - 1,
-                y: x - 1,
-                z: y - 1,
-            },
-        )
-    } else if z >= y && y >= x {
-        (
-            MatrixCol::ZN,
-            MatrixCol::YN,
-            MatrixCol::XP,
-            Dim {
-                x: z - 1,
-                y: y - 1,
-                z: x - 1,
-            },
-        )
-    } else {
-        panic!("imposible dimension of shape {:?}", dim)
-    };
+        //correction matrix to convert to canonical dimension. I dont like it but it works
+        let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
+            (MatrixCol::XP, MatrixCol::YP, MatrixCol::ZP, dim)
+        } else if x >= z && z >= y {
+            (
+                MatrixCol::XP,
+                MatrixCol::ZP,
+                MatrixCol::YN,
+                Dim {
+                    x: x - 1,
+                    y: z - 1,
+                    z: y - 1,
+                },
+            )
+        } else if y >= x && x >= z {
+            (
+                MatrixCol::YP,
+                MatrixCol::XP,
+                MatrixCol::ZN,
+                Dim {
+                    x: y - 1,
+                    y: x - 1,
+                    z: z - 1,
+                },
+            )
+        } else if y >= z && z >= x {
+            (
+                MatrixCol::YP,
+                MatrixCol::ZP,
+                MatrixCol::XP,
+                Dim {
+                    x: y - 1,
+                    y: z - 1,
+                    z: x - 1,
+                },
+            )
+        } else if z >= x && x >= y {
+            (
+                MatrixCol::ZN,
+                MatrixCol::XP,
+                MatrixCol::YN,
+                Dim {
+                    x: z - 1,
+                    y: x - 1,
+                    z: y - 1,
+                },
+            )
+        } else if z >= y && y >= x {
+            (
+                MatrixCol::ZN,
+                MatrixCol::YN,
+                MatrixCol::XP,
+                Dim {
+                    x: z - 1,
+                    y: y - 1,
+                    z: x - 1,
+                },
+            )
+        } else {
+            panic!("imposible dimension of shape {:?}", dim)
+        };
 
-    let mut dst_index = 0;
-    for dz in 0..z as u16 {
-        for dy in 0..y as u16 {
-            for dx in 0..x as u16 {
-                if src.is_set(dx as usize, dy as usize, dz as usize) {
-                    let cx = map_coord(dx, dy, dz, &dim, x_col);
-                    let cy = map_coord(dx, dy, dz, &dim, y_col);
-                    let cz = map_coord(dx, dy, dz, &dim, z_col);
-                    if cx > rdim.x as u16 || cy > rdim.y as u16 || cz > rdim.z as u16 {
-                        panic!("illegal block place {}, {}, {} {:?}", cx, cy, cz, dim)
+        let mut dst_index = 0;
+        for dz in 0..z as u16 {
+            for dy in 0..y as u16 {
+                for dx in 0..x as u16 {
+                    if src.get(dx as u8, dy as u8, dz as u8) {
+                        let cx = map_coord(dx, dy, dz, &dim, x_col);
+                        let cy = map_coord(dx, dy, dz, &dim, y_col);
+                        let cz = map_coord(dx, dy, dz, &dim, z_col);
+                        if cx > rdim.x as u16 || cy > rdim.y as u16 || cz > rdim.z as u16 {
+                            panic!("illegal block place {}, {}, {} {:?}", cx, cy, cz, dim)
+                        }
+                        let pack = ((cz << 10) | (cy << 5) | cx) as u16;
+                        dst.cubes[dst_index] = pack;
+                        dst_index += 1;
                     }
-                    let pack = ((cz << 10) | (cy << 5) | cx) as u16;
-                    dst.cubes[dst_index] = pack;
-                    dst_index += 1;
                 }
             }
         }
+        dst
     }
-    (dst, rdim)
 }
 
-pub fn map_pos_to_naive(src: &CubeMapPos, count: usize) -> NaivePolyCube {
-    let mut dim = Dim { x: 0, y: 0, z: 0 };
-    for p in src.cubes[0..count].iter() {
-        let ix = *p & 0x1f;
-        let iy = (*p >> 5) & 0x1f;
-        let iz = (*p >> 10) & 0x1f;
-        dim.x = max(dim.x, ix as usize);
-        dim.y = max(dim.y, iy as usize);
-        dim.z = max(dim.z, iz as usize);
-    }
-    let mut dst = NaivePolyCube::new(dim.x + 1, dim.y + 1, dim.z + 1);
-    for p in src.cubes[0..count].iter() {
-        let ix = *p & 0x1f;
-        let iy = (*p >> 5) & 0x1f;
-        let iz = (*p >> 10) & 0x1f;
-        match dst.set(ix as usize, iy as usize, iz as usize) {
-            Ok(_) => {}
-            Err(_) => panic!("setting {} {} {} returned an error", ix, iy, iz),
+impl From<&'_ CubeMapPos> for RawPCube {
+    fn from(src: &'_ CubeMapPos) -> Self {
+        //cube is sorted numerically and then has trailing zeros
+        let count = src.extrapolate_count();
+        let dim = src.extrapolate_dim();
+
+        let mut dst = RawPCube::new_empty(dim.x as u8 + 1, dim.y as u8 + 1, dim.z as u8 + 1);
+        for p in src.cubes[0..count].iter() {
+            let ix = *p & 0x1f;
+            let iy = (*p >> 5) & 0x1f;
+            let iz = (*p >> 10) & 0x1f;
+            dst.set(ix as u8, iy as u8, iz as u8, true);
         }
+        dst
     }
-    dst
+}
+
+impl From<RawPCube> for CubeMapPos {
+    fn from(value: RawPCube) -> Self {
+        value.into()
+    }
+}
+
+impl From<CubeMapPos> for RawPCube {
+    fn from(value: CubeMapPos) -> Self {
+        value.into()
+    }
+}
+
+impl CubeMapPos {
+    pub fn extrapolate_count(&self) -> usize {
+        let mut count = 1;
+        while self.cubes[count] > self.cubes[count - 1] {
+            count += 1;
+        }
+        count
+    }
+    pub fn extrapolate_dim(&self) -> Dim {
+        let count = self.extrapolate_count();
+        let mut dim = Dim { x: 0, y: 0, z: 0 };
+        for p in self.cubes[0..count].iter() {
+            let ix = *p & 0x1f;
+            let iy = (*p >> 5) & 0x1f;
+            let iz = (*p >> 10) & 0x1f;
+            dim.x = max(dim.x, ix as usize);
+            dim.y = max(dim.y, iy as usize);
+            dim.z = max(dim.z, iz as usize);
+        }
+        dim
+    }
 }
 
 /// Partial Polycube representation for storage

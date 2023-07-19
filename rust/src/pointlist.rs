@@ -2,14 +2,14 @@ use std::{cmp::max, time::Instant};
 
 use crate::{
     make_bar,
-    polycube_reps::{map_pos_to_naive, naive_to_map_pos, CubeMapPos, CubeMapPosPart, Dim},
+    polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
     Compression,
 };
 
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
-use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
+use opencubes::pcube::{PCubeFile, RawPCube};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
@@ -349,7 +349,7 @@ pub fn gen_polycubes(
     use_cache: bool,
     compression: Compression,
     parallel: bool,
-    mut current: Vec<NaivePolyCube>,
+    current: Vec<RawPCube>,
     calculate_from: usize,
 ) -> Vec<CubeMapPos> {
     let t1_start = Instant::now();
@@ -357,7 +357,8 @@ pub fn gen_polycubes(
     //convert input vector of NaivePolyCubes and convert them to
     let mut seeds = MapStore::new();
     for seed in current.iter() {
-        let (seed, dim) = naive_to_map_pos(seed);
+        let seed: CubeMapPos = seed.into();
+        let dim = seed.extrapolate_dim();
         if !seeds.contains_key(&(dim, seed.cubes[0])) {
             for i in 0..(dim.y * 32 + dim.x + 1) {
                 seeds.insert((dim, i as u16), RwLock::new(HashSet::new()));
@@ -365,8 +366,7 @@ pub fn gen_polycubes(
         }
         insert_map(&seeds, &dim, &seed, calculate_from - 1);
     }
-    current.clear();
-    current.shrink_to_fit();
+    drop(current);
 
     for i in calculate_from..=n as usize {
         let mut bar = make_bar(seeds.len() as u64);
@@ -383,7 +383,7 @@ pub fn gen_polycubes(
                 PCubeFile::write_file(
                     false,
                     compression.into(),
-                    next.iter().map(|v| map_pos_to_naive(v, i).into()),
+                    next.iter().map(|v| v.into()),
                     name,
                 )
                 .unwrap();
@@ -412,7 +412,7 @@ pub fn gen_polycubes(
             PCubeFile::write_file(
                 false,
                 compression.into(),
-                next.iter().map(|v| map_pos_to_naive(v, n).into()),
+                next.iter().map(|v| v.into()),
                 name,
             )
             .unwrap();

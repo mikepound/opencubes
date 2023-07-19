@@ -2,7 +2,7 @@ use core::cmp::Ordering;
 use std::io::{Read, Write};
 
 /// A PolyCube read directly from a pcube file.
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct RawPCube {
     dim_1: u8,
     dim_2: u8,
@@ -51,6 +51,20 @@ impl RawPCube {
             dim_3,
             data,
         })
+    }
+
+    pub fn new_empty(dim_1: u8, dim_2: u8, dim_3: u8) -> Self {
+        let len = (dim_1 as usize) * (dim_2 as usize) * (dim_3 as usize);
+        let byte_len = (len + 7) / 8;
+
+        let data = vec![0; byte_len];
+
+        Self {
+            dim_1,
+            dim_2,
+            dim_3,
+            data,
+        }
     }
 
     fn index(&self, d1: u8, d2: u8, d3: u8) -> (usize, u8) {

@@ -15,19 +15,24 @@
 const int PERF_STEP = 500;
 
 void expand(const Cube &c, Hashy &hashes) {
-    XYZSet candidates;
+    // Get expanded Cube XYZ
+    std::vector<XYZ> candidates, tmp;
     candidates.reserve(c.size() * 6);
     for (const auto &p : c) {
-        candidates.emplace(XYZ(p.x() + 1, p.y(), p.z()));
-        candidates.emplace(XYZ(p.x() - 1, p.y(), p.z()));
-        candidates.emplace(XYZ(p.x(), p.y() + 1, p.z()));
-        candidates.emplace(XYZ(p.x(), p.y() - 1, p.z()));
-        candidates.emplace(XYZ(p.x(), p.y(), p.z() + 1));
-        candidates.emplace(XYZ(p.x(), p.y(), p.z() - 1));
+        candidates.emplace_back(XYZ(p.x() + 1, p.y(), p.z()));
+        candidates.emplace_back(XYZ(p.x() - 1, p.y(), p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y() + 1, p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y() - 1, p.z()));
+        candidates.emplace_back(XYZ(p.x(), p.y(), p.z() + 1));
+        candidates.emplace_back(XYZ(p.x(), p.y(), p.z() - 1));
     }
-    for (const auto &p : c) {
-        candidates.erase(p);
-    }
+    std::sort(candidates.begin(), candidates.end());
+    auto end = std::unique(candidates.begin(), candidates.end());
+    // Copy XYZ not in Cube into tmp
+    tmp.reserve(std::distance(candidates.begin(), end));
+    std::set_difference(candidates.begin(), end, c.begin(), c.end(), std::back_inserter(tmp));
+    candidates = std::move(tmp);
+
     DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
 
     Cube newCube(c.size() + 1);

@@ -440,7 +440,7 @@ fn to_dim(cm: &CubeMap) -> Dim {
     }
 }
 
-//expand all polycubes in set n-1
+/// expand all polycubes in set n-1 to get set n
 fn expand_cube_set(
     in_set: &HashSet<CubeEncoding>,
     #[cfg(feature = "diagnostics")] depth: usize,

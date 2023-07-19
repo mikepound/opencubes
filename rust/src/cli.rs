@@ -295,7 +295,7 @@ fn load_cache_file(n: usize) -> Option<PCubeFile> {
 /// load closes cache file to n into a vec
 /// returns a vec and the next order above the found cache file
 fn load_cache(n: usize) -> (Vec<NaivePolyCube>, usize) {
-    let mut calculate_from = 2;
+    let calculate_from = 2;
 
     for n in (calculate_from..n).rev() {
         let name = format!("cubes_{n}.pcube");
@@ -312,7 +312,6 @@ fn load_cache(n: usize) -> (Vec<NaivePolyCube>, usize) {
         }
 
         let len = cache.len();
-        calculate_from = n + 1;
 
         let mut error = None;
         let mut total_loaded = 0;

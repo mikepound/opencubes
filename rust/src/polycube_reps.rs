@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::cmp::max;
 
 use opencubes::naive_polycube::NaivePolyCube;
 
@@ -122,7 +122,10 @@ pub fn map_pos_to_naive(src: &CubeMapPos, count: usize) -> NaivePolyCube {
         let ix = *p & 0x1f;
         let iy = (*p >> 5) & 0x1f;
         let iz = (*p >> 10) & 0x1f;
-        dst.set(ix as usize, iy as usize, iz as usize);
+        match dst.set(ix as usize, iy as usize, iz as usize) {
+            Ok(_) => {}
+            Err(_) => panic!("setting {} {} {} returned an error", ix, iy, iz),
+        }
     }
     dst
 }

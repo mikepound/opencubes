@@ -455,7 +455,14 @@ pub fn enumerate(opts: &EnumerateOpts) {
             //     startn)
         }
         (EnumerationMode::PointList, para) => {
-            let cubes = pointlist::gen_polycubes(n, !para, seed_list, startn);
+            let cubes = pointlist::gen_polycubes(
+                n,
+                cache,
+                opts.cache_compression,
+                !para,
+                seed_list,
+                startn,
+            );
             cubes.len()
         }
     };

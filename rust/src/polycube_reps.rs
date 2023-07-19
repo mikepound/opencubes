@@ -107,6 +107,26 @@ pub fn naive_to_map_pos(src: &NaivePolyCube) -> (CubeMapPos, Dim) {
     (dst, rdim)
 }
 
+pub fn map_pos_to_naive(src: &CubeMapPos, count: usize) -> NaivePolyCube {
+    let mut dim = Dim { x: 0, y: 0, z: 0 };
+    for p in src.cubes[0..count].iter() {
+        let ix = *p & 0x1f;
+        let iy = (*p >> 5) & 0x1f;
+        let iz = (*p >> 10) & 0x1f;
+        dim.x = max(dim.x, ix as usize);
+        dim.y = max(dim.y, iy as usize);
+        dim.z = max(dim.z, iz as usize);
+    }
+    let mut dst = NaivePolyCube::new(dim.x + 1, dim.y + 1, dim.z + 1);
+    for p in src.cubes[0..count].iter() {
+        let ix = *p & 0x1f;
+        let iy = (*p >> 5) & 0x1f;
+        let iz = (*p >> 10) & 0x1f;
+        dst.set(ix as usize, iy as usize, iz as usize);
+    }
+    dst
+}
+
 /// Partial Polycube representation for storage
 /// the first block is stored seperately and used as a key to access the set
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]

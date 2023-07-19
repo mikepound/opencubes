@@ -25,9 +25,10 @@ pub fn gen_polycubes(
         let (seed, dim) = naive_to_map_pos(seed);
         seeds.push((seed, dim));
     }
-    current.drop();
+    drop(current);
+    let count = 0;
 
     
-    next
+    count
     //count_polycubes(&seeds);
 }

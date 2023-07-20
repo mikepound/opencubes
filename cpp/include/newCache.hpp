@@ -110,7 +110,7 @@ class CacheReader {
     };
 
     CubeIterator begin() { return CubeIterator(header->n, filePointer + shapes[0].offset); }
-    CubeIterator end() { return CubeIterator(header->n, filePointer + shapes[0].offset + header->n * 3 * 3); }
+    CubeIterator end() { return CubeIterator(header->n, filePointer + shapes[0].offset + header->numPolycubes * header->n * 3); }
 
     ShapeRange getCubesByShape(uint32_t i) {
         if (i >= header->numShapes) return {CubeIterator(header->n, 0), CubeIterator(header->n, 0), 0, XYZ(0, 0, 0)};

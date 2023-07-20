@@ -162,6 +162,9 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
         hashes.init(n);
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
+        if (write_cache) {
+            Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+        }
         return hashes;
     }
 

@@ -6,12 +6,8 @@
 
 #include <iostream>
 
-CacheReader::CacheReader(const std::string& path)
-    : path_(path), fileDescriptor_(0), fileSize_(0), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(0) {
-    if (loadFile(path) != 0) {
-        std::cerr << "failed to load data from \"" << path << "\"" << std::endl;
-    }
-}
+CacheReader::CacheReader() : path_(""), fileDescriptor_(0), fileSize_(0), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(0) {}
+
 void CacheReader::printHeader() {
     if (fileLoaded_) {
         printf("magic: %x ", header->magic);
@@ -33,12 +29,12 @@ int CacheReader::printShapes(void) {
     return 0;
 }
 
-int CacheReader::loadFile(std::string path) {
+int CacheReader::loadFile(const std::string path) {
     path_ = path;
     fileDescriptor_ = open(path.c_str(), O_RDONLY);
 
     if (fileDescriptor_ == -1) {
-        std::cerr << "error opening file" << std::endl;
+        std::cerr << "failed to load data from \"" << path << "\"" << std::endl;
         return 1;
     }
 
@@ -66,22 +62,14 @@ int CacheReader::loadFile(std::string path) {
 
 CacheReader::~CacheReader() {
     // unmap file from memory
-    if (munmap(filePointer, fileSize_) == -1) {
-        // error handling
-        std::cerr << "error unmapping file" << std::endl;
-    }
+    if (fileLoaded_) {
+        if (munmap(filePointer, fileSize_) == -1) {
+            // error handling
+            std::cerr << "error unmapping file" << std::endl;
+        }
 
-    // close file descriptor
-    close(fileDescriptor_);
-    fileLoaded_ = false;
+        // close file descriptor
+        close(fileDescriptor_);
+        fileLoaded_ = false;
+    }
 }
-/*
-int main(int argc, char** argv) {
-    CacheReader cr(argv[1]);
-    printf("----------\n");
-    cr.printShapes();
-    printf("---------\n");
-    printf("%d\n", cr.header->numShapes);
-    return 0;
-}
-*/

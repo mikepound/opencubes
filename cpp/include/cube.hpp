@@ -58,6 +58,9 @@ struct Cube {
     // Construct from pieces
     Cube(std::initializer_list<XYZ> il) : Cube(il.size()) { std::copy(il.begin(), il.end(), begin()); }
 
+    // Construct from range.
+    Cube(const XYZ *start, const XYZ *end) : Cube(std::distance(start, end)) { std::copy(start, end, begin()); }
+
     Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }
 
     friend void swap(Cube &a, Cube &b) {

@@ -60,6 +60,15 @@ int CacheReader::loadFile(const std::string path) {
     return 0;
 }
 
+ShapeRange CacheReader::getCubesByShape(uint32_t i) {
+    if (i >= header->numShapes) {
+        return ShapeRange{nullptr, nullptr, 0, XYZ(0, 0, 0)};
+    }
+    XYZ* start = reinterpret_cast<XYZ*>(filePointer + shapes[i].offset);
+    XYZ* end = reinterpret_cast<XYZ*>(filePointer + shapes[i].offset + shapes[i].size);
+    return ShapeRange(start, end, shapes[i].size / (header->n * sizeof(XYZ)), XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+}
+
 CacheReader::~CacheReader() {
     // unmap file from memory
     if (fileLoaded_) {

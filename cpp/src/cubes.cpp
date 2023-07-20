@@ -191,7 +191,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
         for (uint32_t sid = 0; sid < base->numShapes(); ++sid) {
             auto s = base->getCubesByShape(sid);
-            auto &shape = s.shape;
+            auto &shape = s.shape();
             int diffx = targetShape.x() - shape.x();
             int diffy = targetShape.y() - shape.y();
             int diffz = targetShape.z() - shape.z();

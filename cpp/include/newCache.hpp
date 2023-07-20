@@ -11,13 +11,13 @@ struct CubeView {
     const XYZ* sparse;
     void print() const {
         for (uint32_t i = 0; i < n; ++i) {
-            printf("(%2d %2d %2d) ", sparse[i].x(), sparse[i].y(), sparse[i].z());
+            std::printf("(%2d %2d %2d) ", sparse[i].x(), sparse[i].y(), sparse[i].z());
         }
-        printf("\n");
+        std::printf("\n");
     }
     operator Cube() const {
         Cube ret(n);
-        memcpy(ret.data(), sparse, n * sizeof(XYZ));
+        std::copy_n(sparse, n, ret.begin());
         return ret;
     }
 };
@@ -31,7 +31,9 @@ struct CubeIterator {
 
    public:
     // constructor
-    CubeIterator(uint32_t n, uint8_t* ptr) : n(n), m_ptr(ptr) {}
+    CubeIterator(uint32_t _n, uint8_t* ptr) : n(_n), m_ptr(ptr) {}
+
+    CubeIterator() : n(0), m_ptr(nullptr) {}
 
     // operators
     const value_type operator*() const {
@@ -113,9 +115,19 @@ class CacheReader {
     CubeIterator end() { return CubeIterator(header->n, filePointer + shapes[0].offset + header->numPolycubes * header->n * 3); }
 
     ShapeRange getCubesByShape(uint32_t i) {
-        if (i >= header->numShapes) return {CubeIterator(header->n, 0), CubeIterator(header->n, 0), 0, XYZ(0, 0, 0)};
-        return {CubeIterator(header->n, filePointer + shapes[i].offset), CubeIterator(header->n, filePointer + shapes[i].offset + shapes[i].size),
-                shapes[i].size / (header->n * sizeof(XYZ)), XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
+        ShapeRange range;
+        if (i >= header->numShapes) {
+            range.b = CubeIterator(header->n, 0);
+            range.e = CubeIterator(header->n, 0);
+            range.size = 0;
+            range.shape = XYZ(0, 0, 0);
+            return range;
+        }
+        range.b = CubeIterator(header->n, filePointer + shapes[i].offset);
+        range.e = CubeIterator(header->n, filePointer + shapes[i].offset + shapes[i].size);
+        range.size = shapes[i].size / (header->n * sizeof(XYZ));
+        range.shape = XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2);
+        return range;
     }
     auto size() { return header->numPolycubes; };
     auto numShapes() { return header->numShapes; };

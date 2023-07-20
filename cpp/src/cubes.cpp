@@ -153,8 +153,7 @@ struct Worker {
     }
 };
 
-Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache) {
-    (void)use_cache;
+FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache) {
     Hashy hashes;
     if (n < 1)
         return {};
@@ -162,14 +161,25 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
         hashes.init(n);
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
-        return hashes;
+        if (write_cache) {
+            Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+        }
+        return FlatCache(hashes, n);
     }
 
     std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
-    CacheReader cr(cachefile);
-    cr.printHeader();
-
-    std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, cr.size());
+    CacheReader cr;
+    if (use_cache) {
+        cr.loadFile(cachefile);
+        cr.printHeader();
+    }
+    FlatCache fc;
+    ICache *base = &cr;
+    if (!cr) {
+        fc = gen(n - 1, threads, use_cache, write_cache, false);
+        base = &fc;
+    }
+    std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base->size());
     hashes.init(n);
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();
@@ -179,8 +189,8 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
         outShapeCount++;
         XYZ targetShape = tup.first;
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
-        for (uint32_t sid = 0; sid < cr.numShapes(); ++sid) {
-            auto s = cr.getCubesByShape(sid);
+        for (uint32_t sid = 0; sid < base->numShapes(); ++sid) {
+            auto s = base->getCubesByShape(sid);
             auto &shape = s.shape;
             int diffx = targetShape.x() - shape.x();
             int diffy = targetShape.y() - shape.y();
@@ -233,5 +243,5 @@ Hashy gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache
     std::printf("took %.2f s\033[0K\n\r", dt_ms / 1000.f);
     std::printf("num total cubes: %lu\n\r", totalSum);
     checkResult(n, totalSum);
-    return hashes;
+    return FlatCache(hashes, n);
 }

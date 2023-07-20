@@ -5,6 +5,7 @@
 #include <string>
 
 #include "cube.hpp"
+#include "hashes.hpp"
 
 struct CubeView {
     uint32_t n;
@@ -77,17 +78,24 @@ struct ShapeRange {
     uint64_t size;
     XYZ shape;
 };
-class CacheReader {
+
+struct ICache {
+    virtual ShapeRange getCubesByShape(uint32_t i) = 0;
+    virtual uint32_t numShapes() = 0;
+    virtual size_t size() = 0;
+};
+
+class CacheReader : public ICache {
    public:
     // constructor
-    explicit CacheReader(const std::string& path);
+    explicit CacheReader();
     // destuctor
     ~CacheReader();
 
     // methods
     void printHeader();
     int printShapes();
-    int loadFile(std::string path);
+    int loadFile(const std::string path);
 
     // vars
     char* data;
@@ -114,7 +122,7 @@ class CacheReader {
     CubeIterator begin() { return CubeIterator(header->n, filePointer + shapes[0].offset); }
     CubeIterator end() { return CubeIterator(header->n, filePointer + shapes[0].offset + header->numPolycubes * header->n * 3); }
 
-    ShapeRange getCubesByShape(uint32_t i) {
+    virtual ShapeRange getCubesByShape(uint32_t i) override {
         ShapeRange range;
         if (i >= header->numShapes) {
             range.b = CubeIterator(header->n, 0);
@@ -129,8 +137,9 @@ class CacheReader {
         range.shape = XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2);
         return range;
     }
-    auto size() { return header->numPolycubes; };
-    auto numShapes() { return header->numShapes; };
+    virtual size_t size() override { return header->numPolycubes; };
+    virtual uint32_t numShapes() override { return header->numShapes; };
+    operator bool() { return fileLoaded_; }
 
    private:
     // private vars
@@ -141,6 +150,36 @@ class CacheReader {
     Header dummyHeader;
     Header* header;
     ShapeEntry* shapes;
+};
+
+struct FlatCache : public ICache {
+    std::vector<XYZ> allXYZs;
+    std::vector<ShapeRange> shapes;
+    uint8_t n = 0;
+    FlatCache() {}
+    FlatCache(Hashy& hashes, uint8_t n) : n(n) {
+        allXYZs.reserve(hashes.size() * n);
+        shapes.reserve(hashes.byshape.size());
+        // std::printf("Flatcache %d %p %p\n", n, (void*)allXYZs.data(), (void*)shapes.data());
+        for (auto& [shape, set] : hashes.byshape) {
+            auto begin = (uint8_t*)&*allXYZs.end();
+            for (auto& subset : set.byhash) {
+                for (auto& cube : subset.set)
+                    // allXYZs.emplace_back(allXYZs.end(), subset.set.begin(), subset.set.end());
+                    std::copy(cube.begin(), cube.end(), std::back_inserter(allXYZs));
+            }
+            auto end = (uint8_t*)&*allXYZs.end();
+            // std::printf("  SR %p %p\n", (void*)begin, (void*)end);
+            ShapeRange sr{CubeIterator(n, begin), CubeIterator(n, end), set.size(), shape};
+            shapes.emplace_back(sr);
+        }
+    }
+    virtual ShapeRange getCubesByShape(uint32_t i) override {
+        if (i >= shapes.size()) return {CubeIterator(0, 0), CubeIterator(0, 0), 0, XYZ(0, 0, 0)};
+        return shapes[i];
+    };
+    virtual uint32_t numShapes() override { return shapes.size(); };
+    virtual size_t size() override { return allXYZs.size() / n / sizeof(XYZ); }
 };
 
 #endif

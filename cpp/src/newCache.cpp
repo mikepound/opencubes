@@ -43,7 +43,7 @@ int CacheReader::loadFile(const std::string path) {
     lseek(fileDescriptor_, 0, SEEK_SET);
 
     // memory map file
-    filePointer = (uint8_t*)mmap(NULL, fileSize_, PROT_READ, MAP_PRIVATE, fileDescriptor_, 0);
+    filePointer = (uint8_t*)mmap(NULL, fileSize_, PROT_READ, MAP_SHARED, fileDescriptor_, 0);
     if (filePointer == MAP_FAILED) {
         // error handling
         std::printf("errorm mapping file memory");

@@ -24,7 +24,7 @@ class CubeIterator {
     explicit CubeIterator() : n(0), m_ptr(nullptr) {}
 
     // derefecence
-    const value_type operator*() const { return Cube(m_ptr, m_ptr + n); }
+    const value_type operator*() const { return Cube(m_ptr, n); }
     // pointer operator->() { return (pointer)m_ptr; }
 
     // Prefix increment

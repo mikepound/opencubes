@@ -26,7 +26,7 @@ type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
 fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
     let map = to_min_rot_points(map, dim, count);
     let mut body = CubeMapPosPart { cubes: [0; 15] };
-    for i in 1..16 {
+    for i in 1..count {
         body.cubes[i - 1] = map.cubes[i];
     }
     match store.get(&(*dim, map.cubes[0])) {
@@ -44,7 +44,7 @@ fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
 
 ///linearly scan backwards to insertion point overwrites end of slice
 #[inline]
-fn array_insert(val: u16, arr: &mut [u16]) {
+pub fn array_insert(val: u16, arr: &mut [u16]) {
     for i in 1..(arr.len()) {
         if arr[arr.len() - 1 - i] > val {
             arr[arr.len() - i] = arr[arr.len() - 1 - i];
@@ -58,7 +58,7 @@ fn array_insert(val: u16, arr: &mut [u16]) {
 
 /// moves contents of slice to index x+1, x==0 remains
 #[inline]
-fn array_shift(arr: &mut [u16]) {
+pub fn array_shift(arr: &mut [u16]) {
     for i in 1..(arr.len()) {
         arr[arr.len() - i] = arr[arr.len() - 1 - i];
     }

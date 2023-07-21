@@ -13,11 +13,11 @@ use opencubes::{
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
+mod hashless;
 mod pointlist;
 mod polycube_reps;
 mod rotation_reduced;
 mod rotations;
-mod hashless;
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -99,7 +99,7 @@ pub enum EnumerationMode {
     Standard,
     RotationReduced,
     PointList,
-    Hashless
+    Hashless,
 }
 
 #[derive(Clone, Subcommand)]
@@ -489,14 +489,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::Hashless, para) => {
-            hashless::gen_polycubes(
-                n,
-                cache,
-                opts.cache_compression,
-                !para,
-                seed_list,
-                startn,
-            )
+            hashless::gen_polycubes(n, cache, opts.cache_compression, !para, seed_list, startn)
         }
     };
 

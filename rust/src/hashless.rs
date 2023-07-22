@@ -31,42 +31,48 @@ fn is_continuous(polycube: &[u16]) -> bool {
             && polycube[0..polycube.len() - 1].contains(&(p - 1))
             && !to_explore[0..exp_head].contains(&(p - 1))
         {
-            to_explore[exp_head] = p - 1;
+            //to_explore[exp_head] = p - 1;
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
             exp_head += 1;
         }
         if p & 0x1f != 0x1f
             && polycube[1..].contains(&(p + 1))
             && !to_explore[0..exp_head].contains(&(p + 1))
         {
-            to_explore[exp_head] = p + 1;
+            //to_explore[exp_head] = p + 1;
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
             exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0
             && polycube[0..polycube.len() - 1].contains(&(p - (1 << 5)))
             && !to_explore[0..exp_head].contains(&(p - (1 << 5)))
         {
-            to_explore[exp_head] = p - (1 << 5);
+            //to_explore[exp_head] = p - (1 << 5);
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
             exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0x1f
             && polycube[1..].contains(&(p + (1 << 5)))
             && !to_explore[0..exp_head].contains(&(p + (1 << 5)))
         {
-            to_explore[exp_head] = p + (1 << 5);
+            //to_explore[exp_head] = p + (1 << 5);
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
             exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0
             && polycube[0..polycube.len() - 1].contains(&(p - (1 << 10)))
             && !to_explore[0..exp_head].contains(&(p - (1 << 10)))
         {
-            to_explore[exp_head] = p - (1 << 10);
+            //to_explore[exp_head] = p - (1 << 10);
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
             exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0x1f
             && polycube[1..].contains(&(p + (1 << 10)))
             && !to_explore[0..exp_head].contains(&(p + (1 << 10)))
         {
-            to_explore[exp_head] = p + (1 << 10);
+            //to_explore[exp_head] = p + (1 << 10);
+            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
             exp_head += 1;
         }
     }
@@ -131,7 +137,8 @@ fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> (CubeMapPos, Dim) {
         let cy = map_coord(dx, dy, dz, &dim, y_col);
         let cz = map_coord(dx, dy, dz, &dim, z_col);
         let pack = ((cz << 10) | (cy << 5) | cx) as u16;
-        dst.cubes[i] = pack;
+        //dst.cubes[i] = pack;
+        unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
     }
     //dst.cubes.sort();
     (dst, rdim)
@@ -148,7 +155,8 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
     let mut candidate_ptr = 0;
     for i in 0..=count {
         if i != point {
-            let pos = exp.cubes[i];
+            //let pos = exp.cubes[i];
+            let pos = unsafe {*exp.cubes.get_unchecked(i)};
             let x = pos as usize & 0x1f;
             let y = (pos as usize >> 5) & 0x1f;
             let z = (pos as usize >> 10) & 0x1f;
@@ -158,7 +166,8 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
             max_corner.x = max(max_corner.x, x);
             max_corner.y = max(max_corner.y, y);
             max_corner.z = max(max_corner.z, z);
-            root_candidate.cubes[candidate_ptr] = exp.cubes[i];
+            //root_candidate.cubes[candidate_ptr] = pos;
+            unsafe {*root_candidate.cubes.get_unchecked_mut(candidate_ptr) = pos;}
             candidate_ptr += 1;
         }
     }

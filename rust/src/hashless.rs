@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     cmp::{max, min},
     sync::atomic::{AtomicUsize, Ordering},
     time::Instant,
@@ -20,64 +19,107 @@ use crate::{
 
 fn is_continuous(polycube: &[u16]) -> bool {
     let start = polycube[0];
-    let mut visited = HashSet::new();
-    let mut to_explore = HashSet::new();
-    to_explore.insert(start);
-    while let Some(p) = to_explore.iter().next() {
-        let p = *p;
-        to_explore.remove(&p);
-        visited.insert(p);
-        if p & 0x1f != 0 && polycube.contains(&(p - 1)) && !visited.contains(&(p - 1)) {
-            to_explore.insert(p - 1);
+    //sets were actually slower even when no allocating
+    let mut to_explore = [0; 32];
+    let mut exp_head = 1;
+    let mut exp_tail = 0;
+    to_explore[0] = start;
+    while exp_head > exp_tail {
+        let p = to_explore[exp_tail];
+        exp_tail += 1;
+        if p & 0x1f != 0
+            && polycube[0..polycube.len() - 1].contains(&(p - 1))
+            && !to_explore[0..exp_head].contains(&(p - 1))
+        {
+            to_explore[exp_head] = p - 1;
+            exp_head += 1;
         }
-        if p & 0x1f != 0x1f && polycube.contains(&(p + 1)) && !visited.contains(&(p + 1)) {
-            to_explore.insert(p + 1);
+        if p & 0x1f != 0x1f
+            && polycube[1..].contains(&(p + 1))
+            && !to_explore[0..exp_head].contains(&(p + 1))
+        {
+            to_explore[exp_head] = p + 1;
+            exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0
-            && polycube.contains(&(p - (1 << 5)))
-            && !visited.contains(&(p - (1 << 5)))
+            && polycube[0..polycube.len() - 1].contains(&(p - (1 << 5)))
+            && !to_explore[0..exp_head].contains(&(p - (1 << 5)))
         {
-            to_explore.insert(p - (1 << 5));
+            to_explore[exp_head] = p - (1 << 5);
+            exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0x1f
-            && polycube.contains(&(p + (1 << 5)))
-            && !visited.contains(&(p + (1 << 5)))
+            && polycube[1..].contains(&(p + (1 << 5)))
+            && !to_explore[0..exp_head].contains(&(p + (1 << 5)))
         {
-            to_explore.insert(p + (1 << 5));
+            to_explore[exp_head] = p + (1 << 5);
+            exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0
-            && polycube.contains(&(p - (1 << 10)))
-            && !visited.contains(&(p - (1 << 10)))
+            && polycube[0..polycube.len() - 1].contains(&(p - (1 << 10)))
+            && !to_explore[0..exp_head].contains(&(p - (1 << 10)))
         {
-            to_explore.insert(p - (1 << 10));
+            to_explore[exp_head] = p - (1 << 10);
+            exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0x1f
-            && polycube.contains(&(p + (1 << 10)))
-            && !visited.contains(&(p + (1 << 10)))
+            && polycube[1..].contains(&(p + (1 << 10)))
+            && !to_explore[0..exp_head].contains(&(p + (1 << 10)))
         {
-            to_explore.insert(p + (1 << 10));
+            to_explore[exp_head] = p + (1 << 10);
+            exp_head += 1;
         }
     }
-    visited.len() == polycube.len()
+    exp_head == polycube.len()
 }
 
-fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> CubeMapPos {
+fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> (CubeMapPos, Dim) {
     let mut dst = CubeMapPos { cubes: [0; 16] };
     let x = dim.x;
     let y = dim.y;
     let z = dim.z;
-    let (x_col, y_col, z_col) = if x >= y && y >= z {
-        (MatrixCol::XP, MatrixCol::YP, MatrixCol::ZP)
+    let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
+        (
+            MatrixCol::XP,
+            MatrixCol::YP,
+            MatrixCol::ZP,
+            Dim { x: x, y: y, z: z },
+        )
     } else if x >= z && z >= y {
-        (MatrixCol::XP, MatrixCol::ZP, MatrixCol::YN)
+        (
+            MatrixCol::XP,
+            MatrixCol::ZP,
+            MatrixCol::YN,
+            Dim { x: x, y: z, z: y },
+        )
     } else if y >= x && x >= z {
-        (MatrixCol::YP, MatrixCol::XP, MatrixCol::ZN)
+        (
+            MatrixCol::YP,
+            MatrixCol::XP,
+            MatrixCol::ZN,
+            Dim { x: y, y: x, z: z },
+        )
     } else if y >= z && z >= x {
-        (MatrixCol::YP, MatrixCol::ZP, MatrixCol::XP)
+        (
+            MatrixCol::YP,
+            MatrixCol::ZP,
+            MatrixCol::XP,
+            Dim { x: y, y: z, z: x },
+        )
     } else if z >= x && x >= y {
-        (MatrixCol::ZN, MatrixCol::XP, MatrixCol::YN)
+        (
+            MatrixCol::ZN,
+            MatrixCol::XP,
+            MatrixCol::YN,
+            Dim { x: z, y: x, z: y },
+        )
     } else if z >= y && y >= x {
-        (MatrixCol::ZN, MatrixCol::YN, MatrixCol::XP)
+        (
+            MatrixCol::ZN,
+            MatrixCol::YN,
+            MatrixCol::XP,
+            Dim { x: z, y: y, z: x },
+        )
     } else {
         panic!("imposible dimension of shape {:?}", dim)
     };
@@ -92,7 +134,7 @@ fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> CubeMapPos {
         dst.cubes[i] = pack;
     }
     //dst.cubes.sort();
-    dst
+    (dst, rdim)
 }
 
 fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim) {
@@ -120,12 +162,10 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
             candidate_ptr += 1;
         }
     }
-    // println!("u{:?}", root_candidate.cubes);
     let offset = (min_corner.z << 10) | (min_corner.y << 5) | min_corner.x;
     for i in 0..count {
         root_candidate.cubes[i] -= offset as u16;
     }
-    // println!("w{:?}", root_candidate.cubes);
     max_corner.x = max_corner.x - min_corner.x;
     max_corner.y = max_corner.y - min_corner.y;
     max_corner.z = max_corner.z - min_corner.z;
@@ -133,54 +173,28 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
 }
 
 fn is_canonical_root(exp: &CubeMapPos, count: usize, seed: &CubeMapPos) -> bool {
-    let mut seed_found = false;
     for sub_cube_id in 0..=count {
-        let (mut root_candidate, dim) = remove_cube(exp, sub_cube_id, count);
-        // if dim.x == 1 && dim.y == 1 && dim.z == 1 {
-        //     println!("111 {:?} {}", root_candidate, count);
-        // }
-        if dim.x < dim.y || dim.y < dim.z || dim.x < dim.z {
-            root_candidate = renormalize(&root_candidate, &dim, count);
-            // println!("a");
-            // continue;
-        }
+        let (mut root_candidate, mut dim) = remove_cube(exp, sub_cube_id, count);
         if !is_continuous(&root_candidate.cubes[0..count]) {
-            // println!("b");
             continue;
         }
-        root_candidate.cubes[0..count].sort_unstable();
-        // println!("c");
-        let mrp = to_min_rot_points(&root_candidate, &root_candidate.extrapolate_dim(), count);
+        if dim.x < dim.y || dim.y < dim.z || dim.x < dim.z {
+            let (rroot_candidate, rdim) = renormalize(&root_candidate, &dim, count);
+            root_candidate = rroot_candidate;
+            dim = rdim;
+            root_candidate.cubes[0..count].sort_unstable();
+        }
+        let mrp = to_min_rot_points(&root_candidate, &dim, count);
         if &mrp < seed {
             return false;
         }
-        // println!("mrp {:?}", mrp);
-        if &mrp == seed {
-            seed_found = true;
-            // println!("seedy");
-        }
     }
-    if !seed_found {
-        panic!("seedless {}\n{:?}\n{:?}", count, exp, seed);
-    }
-    // println!("{:?} root of {:?}", exp, seed);
     true
 }
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
 fn insert_map(store: &mut HashSet<CubeMapPos>, dim: &Dim, map: &CubeMapPos, count: usize) {
-    // if map.extrapolate_count() != count {
-    //     panic!("count missmatch {} {}", map.extrapolate_count(), count)
-    // }
-    // if !is_continuous(&map.cubes[0..count]) {
-    //     panic!("not continuous {:?}", map)
-    // }
-    // for i in 1..count {
-    //     if map.cubes[i - 1] >= map.cubes[i] {
-    //         panic!("{} >= {} not sorted", map.cubes[i - 1], map.cubes[i])
-    //     }
-    // }
     let map = to_min_rot_points(map, dim, count);
     store.insert(map);
 }
@@ -369,10 +383,10 @@ fn enumerate_canonical_children(
 /// run pointlist based generation algorithm
 pub fn gen_polycubes(
     n: usize,
-    use_cache: bool,
-    compression: Compression,
+    _use_cache: bool,
+    _compression: Compression,
     parallel: bool,
-    mut current: Vec<RawPCube>,
+    current: Vec<RawPCube>,
     calculate_from: usize,
 ) -> usize {
     let t1_start = Instant::now();
@@ -399,10 +413,12 @@ pub fn gen_polycubes(
             let steps = work_count.fetch_add(1, Ordering::Relaxed) + 1;
             let t1_now = Instant::now();
             let time = t1_now.duration_since(t1_start).as_secs() as usize;
+            let rem_time = (time * seed_count) / steps - time;
             bar.set_message(format!(
-                "seed subsets expanded for N = {}. est {}m remaining..",
+                "seed subsets expanded for N = {}. est {}:{:02}m remaining..",
                 calculate_from - 1,
-                ((time * seed_count) / steps - time) / 60
+                rem_time / 60,
+                rem_time % 60
             ));
             bar.inc(1);
         });
@@ -417,10 +433,12 @@ pub fn gen_polycubes(
             let steps = work_count.fetch_add(1, Ordering::Relaxed) + 1;
             let t1_now = Instant::now();
             let time = t1_now.duration_since(t1_start).as_secs() as usize;
+            let rem_time = (time * seed_count) / steps - time;
             bar.set_message(format!(
-                "seed subsets expanded for N = {}. est {}m remaining..",
+                "seed subsets expanded for N = {}. est {}:{:02}m remaining..",
                 calculate_from - 1,
-                (time * seed_count) / steps / 60
+                rem_time / 60,
+                rem_time % 60
             ));
             bar.inc(1);
         });

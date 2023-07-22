@@ -206,7 +206,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             if (diffy == 1)
                 if (shape.y() == shape.x()) diffx = 1;
 
-            std::printf("  shape %d %d %d\n\r", shape.x(), shape.y(), shape.z());
+            std::printf("  shape %d %d %d: #%lu\n\r", shape.x(), shape.y(), shape.z(), s.size());
             // std::printf("starting %d threads\n\r", threads);
             std::vector<std::thread> ts;
             Workset ws(s, hashes, targetShape, shape, XYZ(diffx, diffy, diffz), abssum);

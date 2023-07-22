@@ -1,16 +1,17 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     io::ErrorKind,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use opencubes::{
     naive_polycube::NaivePolyCube,
     pcube::{PCubeFile, RawPCube},
 };
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod pointlist;
 mod polycube_reps;
@@ -272,9 +273,9 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
                 exit("Found non-unique polycubes.");
             }
         }
-    }
 
-    bar.finish();
+        bar.finish();
+    }
 
     println!("Success: {path}, containing {total_read} cubes, is valid");
 
@@ -370,6 +371,7 @@ where
     if n == 0 {
         return Vec::new();
     }
+
     let mut current = current
         .into_iter()
         .map(NaivePolyCube::from)
@@ -498,92 +500,123 @@ pub fn convert(opts: &ConvertArgs) {
         std::process::exit(1);
     }
 
-    opts.path.iter().for_each(|path| {
-        let output_path = opts.output_path.as_ref().unwrap_or(&path);
+    let multi_bar = MultiProgress::new();
 
-        println!("Converting file {}", path);
-        println!("Final output path: {output_path}");
+    // First create the files and put all of these into a BTreeMap so
+    // that the longest files are yielded last.
+    let files: BTreeMap<_, _> = opts
+        .path
+        .iter()
+        .map(|path| {
+            let input_file = match PCubeFile::new_file(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    println!("Failed to open input file {path}. Error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            (input_file.len(), (input_file, path.to_string()))
+        })
+        .collect();
 
-        let input_file = match PCubeFile::new_file(&path) {
-            Ok(f) => f,
-            Err(e) => {
-                println!("Failed to open input file. Error: {e}");
-                std::process::exit(1);
-            }
-        };
+    // Iterate over the files and do some printing, in-order
+    let files: Vec<_> = files
+        .into_iter()
+        .map(|(_, (input_file, path))| {
+            let output_path = opts.output_path.clone().unwrap_or(path.clone());
 
-        if opts.canonicalize {
-            println!("Canonicalizing output");
-        }
-        println!("Input compression: {:?}", input_file.compression());
-        println!("Output compression: {:?}", opts.compression);
-
-        let canonical = input_file.canonical();
-        let len = input_file.len();
-
-        let bar = if let Some(len) = len {
-            make_bar(len as u64)
-        } else {
-            unknown_bar()
-        };
-
-        let exit = |msg: &str| -> ! {
-            bar.abandon();
-            eprintln!("{msg}");
-            std::process::exit(1);
-        };
-
-        let mut output_path_temp = PathBuf::from(output_path);
-        let filename = output_path_temp.file_name().unwrap();
-        let filename = filename.to_string_lossy().to_string();
-        let filename = format!(".{filename}.tmp");
-        output_path_temp.pop();
-        output_path_temp.push(filename);
-
-        let mut total_read = 0;
-        let mut last_tick = Instant::now();
-        bar.tick();
-
-        let input = input_file.filter_map(|v| {
-            total_read += 1;
-
-            if len.is_some() {
-                bar.inc(1);
-            } else if last_tick.elapsed() >= Duration::from_millis(66) {
-                last_tick = Instant::now();
-                bar.set_message(format!("{total_read}"));
-                bar.inc(1);
-                bar.tick();
-            }
-
-            let cube = match v {
-                Ok(v) => Some(v),
-                Err(e) => exit(&format!(
-                    "Failed to read all cubes from input file. Error: {e}"
-                )),
-            }?;
-
+            println!("Converting file {}", path);
+            println!("Final output path: {output_path}");
             if opts.canonicalize {
-                Some(NaivePolyCube::from(cube).canonical_form().into())
+                println!("Canonicalizing output");
+            }
+            println!("Input compression: {:?}", input_file.compression());
+            println!("Output compression: {:?}", opts.compression);
+
+            let len = input_file.len();
+
+            let bar = if let Some(len) = len {
+                make_bar(len as u64)
             } else {
-                Some(cube)
+                unknown_bar()
+            };
+
+            let bar = multi_bar.add(bar);
+
+            (input_file, path, output_path, len, bar)
+        })
+        .collect();
+
+    // Convert, in parallel
+    files
+        .into_par_iter()
+        .for_each(|(input_file, path, output_path, len, bar)| {
+            bar.set_message(path.to_string());
+
+            let canonical = input_file.canonical();
+            let mut output_path_temp = PathBuf::from(&output_path);
+            let filename = output_path_temp.file_name().unwrap();
+            let filename = filename.to_string_lossy().to_string();
+            let filename = format!(".{filename}.tmp");
+            output_path_temp.pop();
+            output_path_temp.push(filename);
+
+            let mut total_read = 0;
+            let mut last_tick = Instant::now();
+
+            let input = input_file.filter_map(|v| {
+                total_read += 1;
+
+                let cube = match v {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        let msg = format!("{path} Failed. Error: {e}");
+                        bar.abandon_with_message(msg);
+                        return None;
+                    }
+                }?;
+
+                if len.is_some() {
+                    bar.inc(1);
+                } else if last_tick.elapsed() >= Duration::from_millis(66) {
+                    last_tick = Instant::now();
+                    bar.set_message(format!("{total_read}"));
+                    bar.inc(1);
+                    bar.tick();
+                }
+
+                if opts.canonicalize {
+                    Some(NaivePolyCube::from(cube).canonical_form().into())
+                } else {
+                    Some(cube)
+                }
+            });
+
+            let canonical = canonical || opts.canonicalize;
+
+            match PCubeFile::write_file(
+                canonical,
+                opts.compression.into(),
+                input,
+                &output_path_temp,
+            ) {
+                Ok(_) => {}
+                Err(e) => {
+                    bar.abandon_with_message(format!("Failed. Error: {e}."));
+                    return;
+                }
+            }
+
+            if !bar.is_finished() {
+                match std::fs::rename(output_path_temp, output_path) {
+                    Ok(_) => bar.finish_with_message(format!("{path} Done!")),
+                    Err(e) => {
+                        bar.abandon_with_message(format!("{path} Failed to write final file: {e}"));
+                        return;
+                    }
+                }
             }
         });
-
-        let canonical = canonical || opts.canonicalize;
-
-        match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
-            Ok(_) => {}
-            Err(e) => exit(&format!("Failed. Error: {e}.")),
-        }
-
-        bar.finish();
-
-        match std::fs::rename(output_path_temp, output_path) {
-            Ok(_) => println!("Success"),
-            Err(e) => exit(&format!("Failed to write final file: {e}")),
-        }
-    });
 }
 
 fn info(path: &str) {

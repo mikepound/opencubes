@@ -112,7 +112,8 @@ pub enum PcubeCommands {
 #[derive(Clone, Args)]
 pub struct ConvertArgs {
     /// The path of the pcube file to convert
-    pub path: String,
+    #[clap(required = true)]
+    pub path: Vec<String>,
 
     /// The output compression to use
     #[clap(long, short = 'z', value_enum, default_value = "none")]
@@ -126,6 +127,7 @@ pub struct ConvertArgs {
     ///
     /// Defaults to `path`, overwriting the original once
     /// the conversion is complete.
+    #[clap(short, long)]
     pub output_path: Option<String>,
 }
 
@@ -373,6 +375,7 @@ where
         .map(NaivePolyCube::from)
         .map(|v| v.canonical_form())
         .collect::<Vec<_>>();
+
     for i in calculate_from..=n {
         let bar = make_bar(current.len() as u64);
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
@@ -490,90 +493,97 @@ pub fn enumerate(opts: &EnumerateOpts) {
 }
 
 pub fn convert(opts: &ConvertArgs) {
-    let output_path = opts.output_path.as_ref().unwrap_or(&opts.path);
-
-    println!("Converting file {}", opts.path);
-    println!("Final output path: {output_path}");
-
-    let input_file = match PCubeFile::new_file(&opts.path) {
-        Ok(f) => f,
-        Err(e) => {
-            println!("Failed to open input file. Error: {e}");
-            std::process::exit(1);
-        }
-    };
-
-    if opts.canonicalize {
-        println!("Canonicalizing output");
-    }
-    println!("Input compression: {:?}", input_file.compression());
-    println!("Output compression: {:?}", opts.compression);
-
-    let canonical = input_file.canonical();
-    let len = input_file.len();
-
-    let bar = if let Some(len) = len {
-        make_bar(len as u64)
-    } else {
-        unknown_bar()
-    };
-
-    let exit = |msg: &str| -> ! {
-        bar.abandon();
-        eprintln!("{msg}");
+    if opts.output_path.is_some() && opts.path.len() > 1 {
+        println!("Cannot convert more than 1 file when output path is provided");
         std::process::exit(1);
-    };
+    }
 
-    let mut output_path_temp = PathBuf::from(output_path);
-    let filename = output_path_temp.file_name().unwrap();
-    let filename = filename.to_string_lossy().to_string();
-    let filename = format!(".{filename}.tmp");
-    output_path_temp.pop();
-    output_path_temp.push(filename);
+    opts.path.iter().for_each(|path| {
+        let output_path = opts.output_path.as_ref().unwrap_or(&path);
 
-    let mut total_read = 0;
-    let mut last_tick = Instant::now();
-    bar.tick();
+        println!("Converting file {}", path);
+        println!("Final output path: {output_path}");
 
-    let input = input_file.filter_map(|v| {
-        total_read += 1;
-
-        if len.is_some() {
-            bar.inc(1);
-        } else if last_tick.elapsed() >= Duration::from_millis(66) {
-            last_tick = Instant::now();
-            bar.set_message(format!("{total_read}"));
-            bar.inc(1);
-            bar.tick();
-        }
-
-        let cube = match v {
-            Ok(v) => Some(v),
-            Err(e) => exit(&format!(
-                "Failed to read all cubes from input file. Error: {e}"
-            )),
-        }?;
+        let input_file = match PCubeFile::new_file(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                println!("Failed to open input file. Error: {e}");
+                std::process::exit(1);
+            }
+        };
 
         if opts.canonicalize {
-            Some(NaivePolyCube::from(cube).canonical_form().into())
+            println!("Canonicalizing output");
+        }
+        println!("Input compression: {:?}", input_file.compression());
+        println!("Output compression: {:?}", opts.compression);
+
+        let canonical = input_file.canonical();
+        let len = input_file.len();
+
+        let bar = if let Some(len) = len {
+            make_bar(len as u64)
         } else {
-            Some(cube)
+            unknown_bar()
+        };
+
+        let exit = |msg: &str| -> ! {
+            bar.abandon();
+            eprintln!("{msg}");
+            std::process::exit(1);
+        };
+
+        let mut output_path_temp = PathBuf::from(output_path);
+        let filename = output_path_temp.file_name().unwrap();
+        let filename = filename.to_string_lossy().to_string();
+        let filename = format!(".{filename}.tmp");
+        output_path_temp.pop();
+        output_path_temp.push(filename);
+
+        let mut total_read = 0;
+        let mut last_tick = Instant::now();
+        bar.tick();
+
+        let input = input_file.filter_map(|v| {
+            total_read += 1;
+
+            if len.is_some() {
+                bar.inc(1);
+            } else if last_tick.elapsed() >= Duration::from_millis(66) {
+                last_tick = Instant::now();
+                bar.set_message(format!("{total_read}"));
+                bar.inc(1);
+                bar.tick();
+            }
+
+            let cube = match v {
+                Ok(v) => Some(v),
+                Err(e) => exit(&format!(
+                    "Failed to read all cubes from input file. Error: {e}"
+                )),
+            }?;
+
+            if opts.canonicalize {
+                Some(NaivePolyCube::from(cube).canonical_form().into())
+            } else {
+                Some(cube)
+            }
+        });
+
+        let canonical = canonical || opts.canonicalize;
+
+        match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
+            Ok(_) => {}
+            Err(e) => exit(&format!("Failed. Error: {e}.")),
+        }
+
+        bar.finish();
+
+        match std::fs::rename(output_path_temp, output_path) {
+            Ok(_) => println!("Success"),
+            Err(e) => exit(&format!("Failed to write final file: {e}")),
         }
     });
-
-    let canonical = canonical || opts.canonicalize;
-
-    match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
-        Ok(_) => {}
-        Err(e) => exit(&format!("Failed. Error: {e}.")),
-    }
-
-    bar.finish();
-
-    match std::fs::rename(output_path_temp, output_path) {
-        Ok(_) => println!("Success"),
-        Err(e) => exit(&format!("Failed to write final file: {e}")),
-    }
 }
 
 fn info(path: &str) {

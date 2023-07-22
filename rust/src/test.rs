@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use crate::PolyCube;
+use crate::naive_polycube::NaivePolyCube;
 
-fn test_cube() -> PolyCube {
-    let mut cube = PolyCube::new(2, 3, 4);
+fn test_cube() -> NaivePolyCube {
+    let mut cube = NaivePolyCube::new(2, 3, 4);
 
     cube.set(0, 0, 1).unwrap();
     cube.set(0, 0, 3).unwrap();
@@ -30,7 +30,7 @@ pub fn from_vec3d() {
     let cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, true,  false, true ],
             vec![true,  true,  true,  true ],
@@ -51,7 +51,7 @@ fn flip_0() {
     let mut cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![true,  true,  false, false],
             vec![true,  false, true,  false],
@@ -74,7 +74,7 @@ fn flip_1() {
     let mut cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, false, false, false],
             vec![true,  true,  true,  true ],
@@ -97,7 +97,7 @@ fn flip_2() {
     let mut cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![true,  false, true,  false],
             vec![true,  true,  true,  true ],
@@ -128,7 +128,7 @@ fn transpose_0_1() {
     let cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, true,  false, true ],
             vec![true,  true,  false, false],
@@ -151,7 +151,7 @@ fn transpose_1_2() {
     let cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, true, false],
             vec![true,  true, false],
@@ -174,7 +174,7 @@ fn transpose_0_2() {
     let cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, true ],
             vec![true,  true ],
@@ -205,7 +205,7 @@ fn rot90_3_0_1() {
     let cube = test_cube();
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![true,   true, false, false],
             vec![false,  true, false, true ],
@@ -226,7 +226,7 @@ fn rot90_3_0_1() {
 #[test]
 fn crop() {
     #[rustfmt::skip]
-    let input = PolyCube::from(vec![
+    let input = NaivePolyCube::from(vec![
         vec![
             vec![false, false, true, false], 
             vec![false, false, false, false],
@@ -238,7 +238,7 @@ fn crop() {
     ]);
 
     #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
+    let expected = NaivePolyCube::from(vec![
         vec![
             vec![false, true], 
             vec![false, false],
@@ -262,42 +262,4 @@ pub fn all_are_unique() {
     let all_rotations: HashSet<_> = cube.all_rotations().collect();
 
     assert_eq!(all_rotations.len(), 24);
-}
-
-#[test]
-pub fn from_bytes() {
-    #[rustfmt::skip]
-    let expected = PolyCube::from(vec![
-        vec![
-            vec![true],
-            vec![true],
-            vec![false],
-        ],
-        vec![
-            vec![true],
-            vec![true],
-            vec![false],
-        ],
-        vec![
-            vec![false],
-            vec![true],
-            vec![false],
-        ],
-        vec![
-            vec![false],
-            vec![true],
-            vec![true],
-        ]
-    ]);
-
-    let bytes: Vec<u8> = vec![0x04, 0x03, 0x01, 0x9B, 0x0c];
-
-    let from_bytes = PolyCube::unpack(&*bytes).unwrap();
-
-    assert_eq!(expected, from_bytes);
-
-    let mut to_bytes = Vec::new();
-    from_bytes.pack(&mut to_bytes).unwrap();
-
-    assert_eq!(bytes, to_bytes);
 }

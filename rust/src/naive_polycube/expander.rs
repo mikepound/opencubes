@@ -1,7 +1,7 @@
 //! This module implements an iterator that provides all N + 1 expansions
 //! for a polycube of N.
 
-use crate::PolyCube;
+use super::NaivePolyCube;
 
 type Sides = std::array::IntoIter<(usize, usize, usize), 6>;
 
@@ -11,7 +11,7 @@ struct ExpansionIterator {
     dim_2: usize,
     dim_3: usize,
     iterating_cube: Option<Sides>,
-    padded_cube: PolyCube,
+    padded_cube: NaivePolyCube,
     done: bool,
 }
 
@@ -49,7 +49,7 @@ impl ExpansionIterator {
 }
 
 impl Iterator for ExpansionIterator {
-    type Item = PolyCube;
+    type Item = NaivePolyCube;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -95,8 +95,8 @@ impl Iterator for ExpansionIterator {
     }
 }
 
-impl PolyCube {
-    pub fn expand(&self) -> impl Iterator<Item = PolyCube> + Clone {
+impl NaivePolyCube {
+    pub fn expand(&self) -> impl Iterator<Item = NaivePolyCube> + Clone {
         ExpansionIterator {
             dim_1: 1,
             dim_2: 1,

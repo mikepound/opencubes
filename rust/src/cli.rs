@@ -7,7 +7,15 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use opencubes::{make_bar, PolyCube, PolyCubeFile};
+use opencubes::{
+    naive_polycube::NaivePolyCube,
+    pcube::{PCubeFile, RawPCube},
+};
+
+mod pointlist;
+mod polycube_reps;
+mod rotation_reduced;
+mod rotations;
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -38,6 +46,22 @@ fn unknown_bar() -> ProgressBar {
     ProgressBar::new(100).with_style(style)
 }
 
+pub fn make_bar(len: u64) -> indicatif::ProgressBar {
+    let bar = ProgressBar::new(len);
+
+    let pos_width = format!("{len}").len();
+
+    let template =
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+
+    bar.set_style(
+        ProgressStyle::with_template(&template)
+            .unwrap()
+            .progress_chars("#>-"),
+    );
+    bar
+}
+
 #[derive(Clone, Parser)]
 pub enum Opts {
     /// Enumerate polycubes with a specific amount of cubes present
@@ -45,6 +69,34 @@ pub enum Opts {
     /// Perform operations on pcube files
     #[clap(subcommand)]
     Pcube(PcubeCommands),
+}
+
+#[derive(Clone, Args)]
+pub struct EnumerateOpts {
+    /// The N value for which to calculate all unique polycubes.
+    pub n: usize,
+
+    /// Disable parallelism.
+    #[clap(long, short = 'p')]
+    pub no_parallelism: bool,
+
+    /// Don't use the cache
+    #[clap(long, short = 'c')]
+    pub no_cache: bool,
+
+    /// Compress written cache files
+    #[clap(long, short = 'z', value_enum, default_value = "none")]
+    pub cache_compression: Compression,
+
+    #[clap(long, short = 'm', value_enum, default_value = "standard")]
+    pub mode: EnumerationMode,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum EnumerationMode {
+    Standard,
+    RotationReduced,
+    PointList,
 }
 
 #[derive(Clone, Subcommand)]
@@ -109,31 +161,13 @@ pub enum Compression {
     Gzip,
 }
 
-impl From<Compression> for opencubes::Compression {
+impl From<Compression> for opencubes::pcube::Compression {
     fn from(value: Compression) -> Self {
         match value {
-            Compression::None => opencubes::Compression::None,
-            Compression::Gzip => opencubes::Compression::Gzip,
+            Compression::None => opencubes::pcube::Compression::None,
+            Compression::Gzip => opencubes::pcube::Compression::Gzip,
         }
     }
-}
-
-#[derive(Clone, Args)]
-pub struct EnumerateOpts {
-    /// The N value for which to calculate all unique polycubes.
-    pub n: usize,
-
-    /// Disable parallelism.
-    #[clap(long, short = 'p')]
-    pub no_parallelism: bool,
-
-    /// Don't use the cache
-    #[clap(long, short = 'c')]
-    pub no_cache: bool,
-
-    /// Compress written cache files
-    #[clap(long, short = 'z', value_enum, default_value = "none")]
-    pub cache_compression: Compression,
 }
 
 pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
@@ -160,8 +194,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
         }
     };
 
-    let mut file = PolyCubeFile::new(path)?;
-    file.should_canonicalize = false;
+    let file = PCubeFile::new_file(path)?;
     let canonical = file.canonical();
     let len = file.len();
 
@@ -172,7 +205,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     };
 
     let exit = |msg: &str| {
-        bar.finish();
+        bar.abandon();
         println!("{msg}");
         std::process::exit(1);
     };
@@ -195,7 +228,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
     for cube in file {
         let cube = match cube {
-            Ok(c) => c,
+            Ok(c) => NaivePolyCube::from(c),
             Err(e) => {
                 println!("Error: Reading the file failed. Error: {e}.");
                 std::process::exit(1);
@@ -213,12 +246,8 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
             bar.tick();
         }
 
-        let mut form: Option<PolyCube> = None;
-        let canonical_form = || {
-            cube.all_rotations()
-                .max_by(PolyCube::canonical_ordering)
-                .unwrap()
-        };
+        let mut form: Option<NaivePolyCube> = None;
+        let canonical_form = || cube.pcube_canonical_form();
 
         if canonical && validate_canonical {
             if form.get_or_insert_with(|| canonical_form()) != &cube {
@@ -250,10 +279,10 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     Ok(())
 }
 
-fn load_cache_file(n: usize) -> Option<PolyCubeFile> {
+fn load_cache_file(n: usize) -> Option<PCubeFile> {
     let name = format!("cubes_{n}.pcube");
 
-    match PolyCubeFile::new(&name) {
+    match PCubeFile::new_file(&name) {
         Ok(file) => Some(file),
         Err(e) => {
             if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
@@ -266,97 +295,112 @@ fn load_cache_file(n: usize) -> Option<PolyCubeFile> {
     }
 }
 
+/// load closes cache file to n into a vec
+/// returns a vec and the next order above the found cache file
+fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
+    let calculate_from = 2;
+
+    for n in (calculate_from..n).rev() {
+        let name = format!("cubes_{n}.pcube");
+        let cache = if let Some(file) = load_cache_file(n) {
+            file
+        } else {
+            continue;
+        };
+
+        println!("Found cache for N = {n}. Loading data...");
+
+        if !cache.canonical() {
+            println!("Cached cubes are not canonical. Canonicalizing...")
+        }
+
+        let len = cache.len();
+
+        let mut error = None;
+        let mut total_loaded = 0;
+
+        let filter = |value| {
+            total_loaded += 1;
+            match value {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error = Some(e);
+                    None
+                }
+            }
+        };
+
+        let cached: HashSet<_> = cache.filter_map(filter).collect();
+
+        if let Some(e) = error {
+            println!("Error occured while loading {name}. Error: {e}");
+        } else {
+            let total_len = len.unwrap_or(total_loaded);
+
+            if total_len != cached.len() {
+                println!("There were non-unique cubes in the cache file. Continuing...")
+            }
+
+            return (cached.into_iter().collect(), n + 1);
+        }
+    }
+
+    println!("no cache file found reverting to start building from n=1");
+    let mut base = RawPCube::new_empty(1, 1, 1);
+    base.set(0, 0, 0, true);
+
+    let current = [base.clone()].to_vec();
+    //calculate from 2 because 1 is in the vec
+    (current, 2)
+}
+
 fn unique_expansions<F>(
     mut expansion_fn: F,
     use_cache: bool,
     n: usize,
     compression: Compression,
-) -> Vec<PolyCube>
+    current: Vec<RawPCube>,
+    calculate_from: usize,
+) -> Vec<NaivePolyCube>
 where
-    F: FnMut(usize, std::slice::Iter<'_, PolyCube>) -> Vec<PolyCube>,
+    F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
 {
     if n == 0 {
         return Vec::new();
     }
+    let mut current = current
+        .into_iter()
+        .map(NaivePolyCube::from)
+        .map(|v| v.canonical_form())
+        .collect::<Vec<_>>();
+    for i in calculate_from..=n {
+        let bar = make_bar(current.len() as u64);
+        bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
-    let mut base = PolyCube::new(1, 1, 1);
+        let start = Instant::now();
 
-    base.set(0, 0, 0).unwrap();
+        let next = expansion_fn(&bar, current.iter());
 
-    let mut current = [base].to_vec();
+        bar.set_message(format!(
+            "Found {} unique expansions (N = {i}) in {} ms.",
+            next.len(),
+            start.elapsed().as_millis(),
+        ));
 
-    if n > 1 {
-        let mut calculate_from = 2;
+        bar.finish();
 
         if use_cache {
-            for n in (calculate_from..=n).rev() {
-                let name = format!("cubes_{n}.pcube");
-                let cache = if let Some(file) = load_cache_file(n) {
-                    file
-                } else {
-                    continue;
-                };
-
-                println!("Found cache for N = {n}. Loading data...");
-
-                if !cache.canonical() {
-                    println!("Cached cubes are not canonical. Canonicalizing...")
-                }
-
-                let len = cache.len();
-                calculate_from = n + 1;
-
-                let mut error = None;
-                let mut total_loaded = 0;
-
-                let filter = |value| {
-                    total_loaded += 1;
-                    match value {
-                        Ok(v) => Some(v),
-                        Err(e) => {
-                            error = Some(e);
-                            None
-                        }
-                    }
-                };
-
-                let cached: HashSet<_> = cache.filter_map(filter).collect();
-
-                if let Some(e) = error {
-                    println!("Error occured while loading {name}. Error: {e}");
-                } else {
-                    let total_len = len.unwrap_or(total_loaded);
-
-                    if total_len != cached.len() {
-                        println!("There were non-unique cubes in the cache file. Continuing...")
-                    }
-
-                    current = cached.into_iter().collect();
-                    break;
-                }
-            }
-        }
-
-        for i in calculate_from..=n {
-            println!("Calculating for N = {i}");
-            let next = expansion_fn(i, current.iter());
-
-            if use_cache {
-                let name = &format!("cubes_{i}.pcube");
-                if !std::fs::File::open(name).is_ok() {
-                    println!("Saving {} cubes to cache file", next.len());
-                    PolyCubeFile::write(
-                        next.iter(),
-                        true,
-                        compression.into(),
-                        std::fs::File::create(name).unwrap(),
-                    )
+            let name = &format!("cubes_{i}.pcube");
+            if !std::fs::File::open(name).is_ok() {
+                println!("Saving {} cubes to cache file", next.len());
+                PCubeFile::write_file(false, compression.into(), next.iter().map(Into::into), name)
                     .unwrap();
-                }
+            } else {
+                println!("Cache file already exists for N = {i}. Not overwriting.");
             }
-
-            current = next;
         }
+
+        current = next;
     }
 
     current
@@ -366,33 +410,82 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
 
+    if n < 2 {
+        println!("n < 2 unsuported");
+        return;
+    }
+
     let start = Instant::now();
 
-    let cubes = if opts.no_parallelism {
-        unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions(true, n, current)
-            },
-            cache,
-            n,
-            opts.cache_compression,
-        )
+    let (seed_list, startn) = if cache {
+        load_cache(n)
     } else {
-        unique_expansions(
-            |n, current: std::slice::Iter<'_, PolyCube>| {
-                PolyCube::unique_expansions_rayon(true, n, current)
-            },
-            cache,
-            n,
-            opts.cache_compression,
-        )
+        let mut base = RawPCube::new_empty(1, 1, 1);
+        base.set(0, 0, 0, true);
+
+        let current = [base].to_vec();
+        //calculate from 2 because 1 is in the vec
+        (current, 2)
+    };
+
+    //Select enumeration function to run
+    let cubes_len = match (opts.mode, opts.no_parallelism) {
+        (EnumerationMode::Standard, true) => {
+            let cubes = unique_expansions(
+                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
+                    NaivePolyCube::unique_expansions(bar, current)
+                },
+                cache,
+                n,
+                opts.cache_compression,
+                seed_list,
+                startn,
+            );
+            cubes.len()
+        }
+        (EnumerationMode::Standard, false) => {
+            let cubes = unique_expansions(
+                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
+                    NaivePolyCube::unique_expansions_rayon(bar, current)
+                },
+                cache,
+                n,
+                opts.cache_compression,
+                seed_list,
+                startn,
+            );
+            cubes.len()
+        }
+        (EnumerationMode::RotationReduced, para) => {
+            if n > 16 {
+                println!("n > 16 not supported for rotation reduced");
+                return;
+            }
+            if !para {
+                println!("no parallel implementation for rotation-reduced, running single threaded")
+            }
+            rotation_reduced::gen_polycubes(n)
+        }
+        (EnumerationMode::PointList, para) => {
+            if n > 16 {
+                println!("n > 16 not supported for point-list");
+                return;
+            }
+            let cubes = pointlist::gen_polycubes(
+                n,
+                cache,
+                opts.cache_compression,
+                !para,
+                seed_list,
+                startn,
+            );
+            cubes.len()
+        }
     };
 
     let duration = start.elapsed();
 
-    let cubes = cubes.len();
-
-    println!("Unique polycubes found for N = {n}: {cubes}.",);
+    println!("Unique polycubes found for N = {n}: {cubes_len}.",);
     println!("Duration: {} ms", duration.as_millis());
 }
 
@@ -402,15 +495,13 @@ pub fn convert(opts: &ConvertArgs) {
     println!("Converting file {}", opts.path);
     println!("Final output path: {output_path}");
 
-    let mut input_file = match PolyCubeFile::new(&opts.path) {
+    let input_file = match PCubeFile::new_file(&opts.path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open input file. Error: {e}");
             std::process::exit(1);
         }
     };
-
-    input_file.should_canonicalize = opts.canonicalize;
 
     if opts.canonicalize {
         println!("Canonicalizing output");
@@ -428,7 +519,7 @@ pub fn convert(opts: &ConvertArgs) {
     };
 
     let exit = |msg: &str| -> ! {
-        bar.finish();
+        bar.abandon();
         eprintln!("{msg}");
         std::process::exit(1);
     };
@@ -439,11 +530,6 @@ pub fn convert(opts: &ConvertArgs) {
     let filename = format!(".{filename}.tmp");
     output_path_temp.pop();
     output_path_temp.push(filename);
-
-    let output_file = match std::fs::File::create(&output_path_temp) {
-        Ok(f) => f,
-        Err(e) => exit(&format!("Failed to create temporary output file. {e}")),
-    };
 
     let mut total_read = 0;
     let mut last_tick = Instant::now();
@@ -461,15 +547,23 @@ pub fn convert(opts: &ConvertArgs) {
             bar.tick();
         }
 
-        match v {
+        let cube = match v {
             Ok(v) => Some(v),
             Err(e) => exit(&format!(
                 "Failed to read all cubes from input file. Error: {e}"
             )),
+        }?;
+
+        if opts.canonicalize {
+            Some(NaivePolyCube::from(cube).canonical_form().into())
+        } else {
+            Some(cube)
         }
     });
 
-    match PolyCubeFile::write(input, canonical, opts.compression.into(), output_file) {
+    let canonical = canonical || opts.canonicalize;
+
+    match PCubeFile::write_file(canonical, opts.compression.into(), input, &output_path_temp) {
         Ok(_) => {}
         Err(e) => exit(&format!("Failed. Error: {e}.")),
     }
@@ -483,7 +577,7 @@ pub fn convert(opts: &ConvertArgs) {
 }
 
 fn info(path: &str) {
-    let file = match PolyCubeFile::new(path) {
+    let file = match PCubeFile::new_file(path) {
         Ok(f) => f,
         Err(e) => {
             println!("Failed to open file. {e}");

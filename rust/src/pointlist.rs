@@ -23,7 +23,7 @@ type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
-fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
+fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
     let map = to_min_rot_points(map, dim, count);
     let mut body = CubeMapPosPart { cubes: [0; 15] };
     for i in 1..count {
@@ -67,7 +67,7 @@ pub fn array_shift(arr: &mut [u16]) {
 /// try expaning each cube into both x+1 and x-1, calculating new dimension
 /// and ensuring x is never negative
 #[inline]
-fn expand_xs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_xs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + 1)) {
             let mut new_shape = *shape;
@@ -102,7 +102,7 @@ fn expand_xs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// try expaning each cube into both y+1 and y-1, calculating new dimension
 /// and ensuring y is never negative
 #[inline]
-fn expand_ys(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_ys(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 5))) {
             let mut new_shape = *shape;
@@ -136,7 +136,7 @@ fn expand_ys(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// try expaning each cube into both z+1 and z-1, calculating new dimension
 /// and ensuring z is never negative
 #[inline]
-fn expand_zs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_zs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 10))) {
             let mut new_shape = *shape;
@@ -170,7 +170,7 @@ fn expand_zs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// reduce number of expansions needing to be performed based on
 /// X >= Y >= Z constraint on Dim
 #[inline]
-fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     if shape.y < shape.x {
         expand_ys(dst, seed, shape, count);
     }
@@ -184,7 +184,7 @@ fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usiz
 /// if perform extra expansions for cases where the dimensions are equal as
 /// square sides may miss poly cubes otherwise
 #[inline]
-fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     if shape.x == shape.y && shape.x > 0 {
         let rotz = rot_matrix_points(
             seed,
@@ -300,13 +300,13 @@ fn count_polycubes(maps: &MapStore) -> usize {
 }
 
 /// distructively move the data from hashset to vector
-fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
+fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
     let mut v = Vec::new();
     while let Some(((dim, head), body)) = maps.iter().next() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
             let bod = body.read();
-            let mut cmp = CubeMapPos { cubes: [0; 16] };
+            let mut cmp = CubeMapPos::new();
             cmp.cubes[0] = *head;
             for b in bod.iter() {
                 for i in 0..15 {
@@ -323,14 +323,14 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
 }
 
 /// distructively move the data from hashset to vector
-fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
+fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
     let mut v = Vec::new();
 
     for ((_, head), body) in maps.iter() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
             let bod = body.read();
-            let mut cmp = CubeMapPos { cubes: [0; 16] };
+            let mut cmp = CubeMapPos::new();
             cmp.cubes[0] = *head;
             for b in bod.iter() {
                 for i in 0..15 {
@@ -351,13 +351,13 @@ pub fn gen_polycubes(
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
-) -> Vec<CubeMapPos> {
+) -> Vec<CubeMapPos<16>> {
     let t1_start = Instant::now();
 
     //convert input vector of NaivePolyCubes and convert them to
     let mut seeds = MapStore::new();
     for seed in current.iter() {
-        let seed: CubeMapPos = seed.into();
+        let seed: CubeMapPos<16> = seed.into();
         let dim = seed.extrapolate_dim();
         if !seeds.contains_key(&(dim, seed.cubes[0])) {
             for i in 0..(dim.y * 32 + dim.x + 1) {

@@ -17,70 +17,75 @@ use crate::{
     Compression,
 };
 
-fn is_continuous(polycube: &[u16]) -> bool {
-    let start = polycube[0];
+fn is_continuous(in_polycube: &[u16]) -> bool {
+    let start = in_polycube[0];
+    let mut polycube2 = [start; 32];
+    for i in 1..in_polycube.len() {
+        polycube2[i] = in_polycube[i];
+    }
+    let polycube = polycube2;
     //sets were actually slower even when no allocating
-    let mut to_explore = [0; 32];
+    let mut to_explore = [start; 32];
     let mut exp_head = 1;
     let mut exp_tail = 0;
-    to_explore[0] = start;
+    //to_explore[0] = start;
     while exp_head > exp_tail {
         let p = to_explore[exp_tail];
         exp_tail += 1;
         if p & 0x1f != 0
-            && polycube[0..polycube.len() - 1].contains(&(p - 1))
-            && !to_explore[0..exp_head].contains(&(p - 1))
+            && !to_explore.contains(&(p - 1))
+            && polycube.contains(&(p - 1))
         {
-            //to_explore[exp_head] = p - 1;
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
+            to_explore[exp_head] = p - 1;
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
             exp_head += 1;
         }
         if p & 0x1f != 0x1f
-            && polycube[1..].contains(&(p + 1))
-            && !to_explore[0..exp_head].contains(&(p + 1))
+            && !to_explore.contains(&(p + 1))
+            && polycube.contains(&(p + 1))
         {
-            //to_explore[exp_head] = p + 1;
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
+            to_explore[exp_head] = p + 1;
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
             exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0
-            && polycube[0..polycube.len() - 1].contains(&(p - (1 << 5)))
-            && !to_explore[0..exp_head].contains(&(p - (1 << 5)))
+            && !to_explore.contains(&(p - (1 << 5)))
+            && polycube.contains(&(p - (1 << 5)))
         {
-            //to_explore[exp_head] = p - (1 << 5);
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
+            to_explore[exp_head] = p - (1 << 5);
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
             exp_head += 1;
         }
         if (p >> 5) & 0x1f != 0x1f
-            && polycube[1..].contains(&(p + (1 << 5)))
-            && !to_explore[0..exp_head].contains(&(p + (1 << 5)))
+            && !to_explore.contains(&(p + (1 << 5)))
+            && polycube.contains(&(p + (1 << 5)))
         {
-            //to_explore[exp_head] = p + (1 << 5);
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
+            to_explore[exp_head] = p + (1 << 5);
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
             exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0
-            && polycube[0..polycube.len() - 1].contains(&(p - (1 << 10)))
-            && !to_explore[0..exp_head].contains(&(p - (1 << 10)))
+            && !to_explore.contains(&(p - (1 << 10)))
+            && polycube.contains(&(p - (1 << 10)))
         {
-            //to_explore[exp_head] = p - (1 << 10);
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
+            to_explore[exp_head] = p - (1 << 10);
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
             exp_head += 1;
         }
         if (p >> 10) & 0x1f != 0x1f
-            && polycube[1..].contains(&(p + (1 << 10)))
-            && !to_explore[0..exp_head].contains(&(p + (1 << 10)))
+            && !to_explore.contains(&(p + (1 << 10)))
+            && polycube.contains(&(p + (1 << 10)))
         {
-            //to_explore[exp_head] = p + (1 << 10);
-            unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
+            to_explore[exp_head] = p + (1 << 10);
+            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
             exp_head += 1;
         }
     }
-    exp_head == polycube.len()
+    exp_head == in_polycube.len()
 }
 
-fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> (CubeMapPos, Dim) {
-    let mut dst = CubeMapPos { cubes: [0; 16] };
+fn renormalize(exp: &CubeMapPos<32>, dim: &Dim, count: usize) -> (CubeMapPos<32>, Dim) {
+    let mut dst = CubeMapPos::new();
     let x = dim.x;
     let y = dim.y;
     let z = dim.z;
@@ -137,26 +142,26 @@ fn renormalize(exp: &CubeMapPos, dim: &Dim, count: usize) -> (CubeMapPos, Dim) {
         let cy = map_coord(dx, dy, dz, &dim, y_col);
         let cz = map_coord(dx, dy, dz, &dim, z_col);
         let pack = ((cz << 10) | (cy << 5) | cx) as u16;
-        //dst.cubes[i] = pack;
-        unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
+        dst.cubes[i] = pack;
+        // unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
     }
     //dst.cubes.sort();
     (dst, rdim)
 }
 
-fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim) {
+fn remove_cube(exp: &CubeMapPos<32>, point: usize, count: usize) -> (CubeMapPos<32>, Dim) {
     let mut min_corner = Dim {
         x: 0x1f,
         y: 0x1f,
         z: 0x1f,
     };
     let mut max_corner = Dim { x: 0, y: 0, z: 0 };
-    let mut root_candidate = CubeMapPos { cubes: [0; 16] };
+    let mut root_candidate = CubeMapPos::new();
     let mut candidate_ptr = 0;
     for i in 0..=count {
         if i != point {
-            //let pos = exp.cubes[i];
-            let pos = unsafe {*exp.cubes.get_unchecked(i)};
+            let pos = exp.cubes[i];
+            // let pos = unsafe {*exp.cubes.get_unchecked(i)};
             let x = pos as usize & 0x1f;
             let y = (pos as usize >> 5) & 0x1f;
             let z = (pos as usize >> 10) & 0x1f;
@@ -166,8 +171,8 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
             max_corner.x = max(max_corner.x, x);
             max_corner.y = max(max_corner.y, y);
             max_corner.z = max(max_corner.z, z);
-            //root_candidate.cubes[candidate_ptr] = pos;
-            unsafe {*root_candidate.cubes.get_unchecked_mut(candidate_ptr) = pos;}
+            root_candidate.cubes[candidate_ptr] = pos;
+            // unsafe {*root_candidate.cubes.get_unchecked_mut(candidate_ptr) = pos;}
             candidate_ptr += 1;
         }
     }
@@ -181,7 +186,7 @@ fn remove_cube(exp: &CubeMapPos, point: usize, count: usize) -> (CubeMapPos, Dim
     (root_candidate, max_corner)
 }
 
-fn is_canonical_root(exp: &CubeMapPos, count: usize, seed: &CubeMapPos) -> bool {
+fn is_canonical_root(exp: &CubeMapPos<32>, count: usize, seed: &CubeMapPos<32>) -> bool {
     for sub_cube_id in 0..=count {
         let (mut root_candidate, mut dim) = remove_cube(exp, sub_cube_id, count);
         if !is_continuous(&root_candidate.cubes[0..count]) {
@@ -203,7 +208,7 @@ fn is_canonical_root(exp: &CubeMapPos, count: usize, seed: &CubeMapPos) -> bool 
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
-fn insert_map(store: &mut HashSet<CubeMapPos>, dim: &Dim, map: &CubeMapPos, count: usize) {
+fn insert_map(store: &mut HashSet<CubeMapPos<32>>, dim: &Dim, map: &CubeMapPos<32>, count: usize) {
     let map = to_min_rot_points(map, dim, count);
     store.insert(map);
 }
@@ -211,7 +216,7 @@ fn insert_map(store: &mut HashSet<CubeMapPos>, dim: &Dim, map: &CubeMapPos, coun
 /// try expaning each cube into both x+1 and x-1, calculating new dimension
 /// and ensuring x is never negative
 #[inline]
-fn expand_xs(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_xs(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + 1)) {
             let mut new_shape = *shape;
@@ -246,7 +251,7 @@ fn expand_xs(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, coun
 /// try expaning each cube into both y+1 and y-1, calculating new dimension
 /// and ensuring y is never negative
 #[inline]
-fn expand_ys(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_ys(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 5))) {
             let mut new_shape = *shape;
@@ -280,7 +285,7 @@ fn expand_ys(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, coun
 /// try expaning each cube into both z+1 and z-1, calculating new dimension
 /// and ensuring z is never negative
 #[inline]
-fn expand_zs(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_zs(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 10))) {
             let mut new_shape = *shape;
@@ -314,7 +319,7 @@ fn expand_zs(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, coun
 /// reduce number of expansions needing to be performed based on
 /// X >= Y >= Z constraint on Dim
 #[inline]
-fn do_cube_expansion(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn do_cube_expansion(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
     if shape.y < shape.x {
         expand_ys(dst, seed, shape, count);
     }
@@ -328,7 +333,7 @@ fn do_cube_expansion(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &D
 /// if perform extra expansions for cases where the dimensions are equal as
 /// square sides may miss poly cubes otherwise
 #[inline]
-fn expand_cube_map(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_cube_map(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
     if shape.x == shape.y && shape.x > 0 {
         let rotz = rot_matrix_points(
             seed,
@@ -369,10 +374,10 @@ fn expand_cube_map(dst: &mut HashSet<CubeMapPos>, seed: &CubeMapPos, shape: &Dim
 }
 
 fn enumerate_canonical_children(
-    seed: &CubeMapPos,
+    seed: &CubeMapPos<32>,
     count: usize,
     target: usize,
-    set_stack: &[RwLock<HashSet<CubeMapPos>>],
+    set_stack: &[RwLock<HashSet<CubeMapPos<32>>>],
 ) -> usize {
     let mut children = set_stack[count].write();
     children.clear();

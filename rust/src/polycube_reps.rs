@@ -9,15 +9,15 @@ use crate::rotations::{map_coord, MatrixCol};
 /// well formed polycubes are a sorted list of coordinates low to high
 /// cordinates are group of packed 5 bit unsigned integers '-ZZZZZYYYYYXXXXX'
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, PartialOrd, Ord)]
-pub struct CubeMapPos {
-    pub cubes: [u16; 16],
+pub struct CubeMapPos<const N: usize> {
+    pub cubes: [u16; N],
 }
 
 /// Conversion function to assist with loading Polycubes from cache file to point-list implementation
 /// Returned cubes may not be fully canonicalized (X >= Y >= Z guarenteed but not exact rotation)
-impl From<&RawPCube> for CubeMapPos {
+impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
     fn from(src: &RawPCube) -> Self {
-        let mut dst = CubeMapPos { cubes: [0; 16] };
+        let mut dst = CubeMapPos { cubes: [0; N] };
         let (x, y, z) = src.dims();
         let x = x as usize;
         let y = y as usize;
@@ -112,8 +112,8 @@ impl From<&RawPCube> for CubeMapPos {
     }
 }
 
-impl From<&'_ CubeMapPos> for RawPCube {
-    fn from(src: &'_ CubeMapPos) -> Self {
+impl<const N: usize> From<&'_ CubeMapPos<N>> for RawPCube {
+    fn from(src: &'_ CubeMapPos<N>) -> Self {
         //cube is sorted numerically and then has trailing zeros
         let count = src.extrapolate_count();
         let dim = src.extrapolate_dim();
@@ -129,19 +129,22 @@ impl From<&'_ CubeMapPos> for RawPCube {
     }
 }
 
-impl From<RawPCube> for CubeMapPos {
+impl<const N: usize> From<RawPCube> for CubeMapPos<N> {
     fn from(value: RawPCube) -> Self {
         value.into()
     }
 }
 
-impl From<CubeMapPos> for RawPCube {
-    fn from(value: CubeMapPos) -> Self {
+impl<const N: usize> From<CubeMapPos<N>> for RawPCube {
+    fn from(value: CubeMapPos<N>) -> Self {
         value.into()
     }
 }
 
-impl CubeMapPos {
+impl<const N: usize> CubeMapPos<N> {
+    pub fn new() -> Self {
+        CubeMapPos {cubes: [0; N]}
+    }
     pub fn extrapolate_count(&self) -> usize {
         let mut count = 1;
         while self.cubes[count] > self.cubes[count - 1] {

@@ -58,16 +58,18 @@ class CubeIterator {
 
 class ShapeRange {
    public:
-    ShapeRange(XYZ* start, XYZ* stop, uint64_t _size, XYZ _shape) : b(_size, start), e(_size, stop), size(_size), shape_(_shape) {}
+    ShapeRange(XYZ* start, XYZ* stop, uint64_t _cubeLen, XYZ _shape)
+        : b(_cubeLen, start), e(_cubeLen, stop), size_(((uint64_t)stop - (uint64_t)start) / (_cubeLen * sizeof(XYZ))), shape_(_shape) {}
 
     CubeIterator begin() { return b; }
     CubeIterator end() { return e; }
 
     XYZ& shape() { return shape_; }
+    auto size() const { return size_; }
 
    private:
     CubeIterator b, e;
-    uint64_t size;
+    uint64_t size_;
     XYZ shape_;
 };
 

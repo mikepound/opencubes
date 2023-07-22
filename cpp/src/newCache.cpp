@@ -66,7 +66,7 @@ ShapeRange CacheReader::getCubesByShape(uint32_t i) {
     }
     XYZ* start = reinterpret_cast<XYZ*>(filePointer + shapes[i].offset);
     XYZ* end = reinterpret_cast<XYZ*>(filePointer + shapes[i].offset + shapes[i].size);
-    return ShapeRange(start, end, shapes[i].size / (header->n * sizeof(XYZ)), XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+    return ShapeRange(start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
 }
 
 CacheReader::~CacheReader() {

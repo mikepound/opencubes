@@ -166,22 +166,6 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`NaivePolyCube`] with dimensions `(dim_1, dim_2, dim_3)`, and
-    /// using `alloc_count` to keep track of the amount of [`NaivePolyCube`]s that
-    /// are allocated.
-    pub fn new_with_alloc_count(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
-        let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
-
-        let me = Self {
-            dim_1,
-            dim_2,
-            dim_3,
-            filled,
-        };
-
-        me
-    }
-
     pub fn new_raw(dim_1: usize, dim_2: usize, dim_3: usize, filled: Vec<bool>) -> Self {
         Self {
             dim_1,
@@ -191,8 +175,7 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`NaivePolyCube`] with dimensions `(dim_1, dim_2, dim_3)` and
-    /// a new allocation tracker.
+    /// Create a new [`NaivePolyCube`] with dimensions `(dim_1, dim_2, dim_3)`.
     pub fn new(dim_1: usize, dim_2: usize, dim_3: usize) -> Self {
         let filled = (0..dim_1 * dim_2 * dim_3).map(|_| false).collect();
 
@@ -204,8 +187,7 @@ impl NaivePolyCube {
         }
     }
 
-    /// Create a new [`NaivePolyCube`] with dimensions `(side, side, side)`, and
-    /// a new allocation tracker.
+    /// Create a new [`NaivePolyCube`] with dimensions `(side, side, side)`.
     pub fn new_equal_sides(side: usize) -> Self {
         Self::new(side, side, side)
     }
@@ -349,9 +331,7 @@ impl NaivePolyCube {
                             let from = d1 + d2 + d3;
                             let to = (d1 + d2 + self.dim_3) - d3 - 1;
 
-                            let stored = self.filled[from];
-                            self.filled[from] = self.filled[to];
-                            self.filled[to] = stored;
+                            self.filled.swap(from, to);
                         }
                     }
                 }
@@ -390,6 +370,11 @@ impl NaivePolyCube {
 
         for value in from_set {
             for expansion in value.expand().map(|v| v.crop()) {
+                // Skip expansions that are already in the list.
+                if this_level.contains(&expansion) {
+                    continue;
+                }
+
                 let max = expansion.canonical_form();
 
                 let missing = !this_level.contains(&max);
@@ -551,6 +536,11 @@ impl NaivePolyCube {
         chunk_iterator.for_each(|v| {
             for value in v {
                 for expansion in value.expand().map(|v| v.crop()) {
+                    // Skip expansions that are already in the list.
+                    if this_level.read().contains(&expansion) {
+                        continue;
+                    }
+
                     let max = expansion.canonical_form();
 
                     let missing = !this_level.read().contains(&max);

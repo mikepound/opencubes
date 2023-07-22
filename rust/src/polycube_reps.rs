@@ -131,13 +131,13 @@ impl<const N: usize> From<&'_ CubeMapPos<N>> for RawPCube {
 
 impl<const N: usize> From<RawPCube> for CubeMapPos<N> {
     fn from(value: RawPCube) -> Self {
-        value.into()
+        (&value).into()
     }
 }
 
 impl<const N: usize> From<CubeMapPos<N>> for RawPCube {
     fn from(value: CubeMapPos<N>) -> Self {
-        value.into()
+        (&value).into()
     }
 }
 

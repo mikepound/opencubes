@@ -1,210 +1,16 @@
-use std::{
-    cmp::{max, min},
-    sync::atomic::{AtomicUsize, Ordering},
-    time::Instant,
-};
+use std::{cmp::max, time::Instant};
 
 use hashbrown::HashSet;
 use opencubes::pcube::RawPCube;
-use parking_lot::RwLock;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     make_bar,
     pointlist::{array_insert, array_shift},
     polycube_reps::{CubeMapPos, Dim},
-    rotations::{map_coord, rot_matrix_points, to_min_rot_points, MatrixCol},
+    rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
     Compression,
 };
-
-fn is_continuous(in_polycube: &[u16]) -> bool {
-    let start = in_polycube[0];
-    let mut polycube2 = [start; 32];
-    for i in 1..in_polycube.len() {
-        polycube2[i] = in_polycube[i];
-    }
-    let polycube = polycube2;
-    //sets were actually slower even when no allocating
-    let mut to_explore = [start; 32];
-    let mut exp_head = 1;
-    let mut exp_tail = 0;
-    //to_explore[0] = start;
-    while exp_head > exp_tail {
-        let p = to_explore[exp_tail];
-        exp_tail += 1;
-        if p & 0x1f != 0
-            && !to_explore.contains(&(p - 1))
-            && polycube.contains(&(p - 1))
-        {
-            to_explore[exp_head] = p - 1;
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
-            exp_head += 1;
-        }
-        if p & 0x1f != 0x1f
-            && !to_explore.contains(&(p + 1))
-            && polycube.contains(&(p + 1))
-        {
-            to_explore[exp_head] = p + 1;
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
-            exp_head += 1;
-        }
-        if (p >> 5) & 0x1f != 0
-            && !to_explore.contains(&(p - (1 << 5)))
-            && polycube.contains(&(p - (1 << 5)))
-        {
-            to_explore[exp_head] = p - (1 << 5);
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
-            exp_head += 1;
-        }
-        if (p >> 5) & 0x1f != 0x1f
-            && !to_explore.contains(&(p + (1 << 5)))
-            && polycube.contains(&(p + (1 << 5)))
-        {
-            to_explore[exp_head] = p + (1 << 5);
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
-            exp_head += 1;
-        }
-        if (p >> 10) & 0x1f != 0
-            && !to_explore.contains(&(p - (1 << 10)))
-            && polycube.contains(&(p - (1 << 10)))
-        {
-            to_explore[exp_head] = p - (1 << 10);
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
-            exp_head += 1;
-        }
-        if (p >> 10) & 0x1f != 0x1f
-            && !to_explore.contains(&(p + (1 << 10)))
-            && polycube.contains(&(p + (1 << 10)))
-        {
-            to_explore[exp_head] = p + (1 << 10);
-            // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
-            exp_head += 1;
-        }
-    }
-    exp_head == in_polycube.len()
-}
-
-fn renormalize(exp: &CubeMapPos<32>, dim: &Dim, count: usize) -> (CubeMapPos<32>, Dim) {
-    let mut dst = CubeMapPos::new();
-    let x = dim.x;
-    let y = dim.y;
-    let z = dim.z;
-    let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
-        (
-            MatrixCol::XP,
-            MatrixCol::YP,
-            MatrixCol::ZP,
-            Dim { x: x, y: y, z: z },
-        )
-    } else if x >= z && z >= y {
-        (
-            MatrixCol::XP,
-            MatrixCol::ZP,
-            MatrixCol::YN,
-            Dim { x: x, y: z, z: y },
-        )
-    } else if y >= x && x >= z {
-        (
-            MatrixCol::YP,
-            MatrixCol::XP,
-            MatrixCol::ZN,
-            Dim { x: y, y: x, z: z },
-        )
-    } else if y >= z && z >= x {
-        (
-            MatrixCol::YP,
-            MatrixCol::ZP,
-            MatrixCol::XP,
-            Dim { x: y, y: z, z: x },
-        )
-    } else if z >= x && x >= y {
-        (
-            MatrixCol::ZN,
-            MatrixCol::XP,
-            MatrixCol::YN,
-            Dim { x: z, y: x, z: y },
-        )
-    } else if z >= y && y >= x {
-        (
-            MatrixCol::ZN,
-            MatrixCol::YN,
-            MatrixCol::XP,
-            Dim { x: z, y: y, z: x },
-        )
-    } else {
-        panic!("imposible dimension of shape {:?}", dim)
-    };
-    for (i, d) in exp.cubes[0..count].iter().enumerate() {
-        let dx = d & 0x1f;
-        let dy = (d >> 5) & 0x1f;
-        let dz = (d >> 10) & 0x1f;
-        let cx = map_coord(dx, dy, dz, &dim, x_col);
-        let cy = map_coord(dx, dy, dz, &dim, y_col);
-        let cz = map_coord(dx, dy, dz, &dim, z_col);
-        let pack = ((cz << 10) | (cy << 5) | cx) as u16;
-        dst.cubes[i] = pack;
-        // unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
-    }
-    //dst.cubes.sort();
-    (dst, rdim)
-}
-
-fn remove_cube(exp: &CubeMapPos<32>, point: usize, count: usize) -> (CubeMapPos<32>, Dim) {
-    let mut min_corner = Dim {
-        x: 0x1f,
-        y: 0x1f,
-        z: 0x1f,
-    };
-    let mut max_corner = Dim { x: 0, y: 0, z: 0 };
-    let mut root_candidate = CubeMapPos::new();
-    let mut candidate_ptr = 0;
-    for i in 0..=count {
-        if i != point {
-            let pos = exp.cubes[i];
-            // let pos = unsafe {*exp.cubes.get_unchecked(i)};
-            let x = pos as usize & 0x1f;
-            let y = (pos as usize >> 5) & 0x1f;
-            let z = (pos as usize >> 10) & 0x1f;
-            min_corner.x = min(min_corner.x, x);
-            min_corner.y = min(min_corner.y, y);
-            min_corner.z = min(min_corner.z, z);
-            max_corner.x = max(max_corner.x, x);
-            max_corner.y = max(max_corner.y, y);
-            max_corner.z = max(max_corner.z, z);
-            root_candidate.cubes[candidate_ptr] = pos;
-            // unsafe {*root_candidate.cubes.get_unchecked_mut(candidate_ptr) = pos;}
-            candidate_ptr += 1;
-        }
-    }
-    let offset = (min_corner.z << 10) | (min_corner.y << 5) | min_corner.x;
-    for i in 0..count {
-        root_candidate.cubes[i] -= offset as u16;
-    }
-    max_corner.x = max_corner.x - min_corner.x;
-    max_corner.y = max_corner.y - min_corner.y;
-    max_corner.z = max_corner.z - min_corner.z;
-    (root_candidate, max_corner)
-}
-
-fn is_canonical_root(exp: &CubeMapPos<32>, count: usize, seed: &CubeMapPos<32>) -> bool {
-    for sub_cube_id in 0..=count {
-        let (mut root_candidate, mut dim) = remove_cube(exp, sub_cube_id, count);
-        if !is_continuous(&root_candidate.cubes[0..count]) {
-            continue;
-        }
-        if dim.x < dim.y || dim.y < dim.z || dim.x < dim.z {
-            let (rroot_candidate, rdim) = renormalize(&root_candidate, &dim, count);
-            root_candidate = rroot_candidate;
-            dim = rdim;
-            root_candidate.cubes[0..count].sort_unstable();
-        }
-        let mrp = to_min_rot_points(&root_candidate, &dim, count);
-        if &mrp < seed {
-            return false;
-        }
-    }
-    true
-}
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
@@ -319,7 +125,12 @@ fn expand_zs(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &D
 /// reduce number of expansions needing to be performed based on
 /// X >= Y >= Z constraint on Dim
 #[inline]
-fn do_cube_expansion(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
+fn do_cube_expansion(
+    dst: &mut HashSet<CubeMapPos<32>>,
+    seed: &CubeMapPos<32>,
+    shape: &Dim,
+    count: usize,
+) {
     if shape.y < shape.x {
         expand_ys(dst, seed, shape, count);
     }
@@ -333,7 +144,12 @@ fn do_cube_expansion(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, s
 /// if perform extra expansions for cases where the dimensions are equal as
 /// square sides may miss poly cubes otherwise
 #[inline]
-fn expand_cube_map(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, shape: &Dim, count: usize) {
+fn expand_cube_map(
+    dst: &mut HashSet<CubeMapPos<32>>,
+    seed: &CubeMapPos<32>,
+    shape: &Dim,
+    count: usize,
+) {
     if shape.x == shape.y && shape.x > 0 {
         let rotz = rot_matrix_points(
             seed,
@@ -373,23 +189,18 @@ fn expand_cube_map(dst: &mut HashSet<CubeMapPos<32>>, seed: &CubeMapPos<32>, sha
     do_cube_expansion(dst, seed, shape, count);
 }
 
-fn enumerate_canonical_children(
-    seed: &CubeMapPos<32>,
-    count: usize,
-    target: usize,
-    set_stack: &[RwLock<HashSet<CubeMapPos<32>>>],
-) -> usize {
-    let mut children = set_stack[count].write();
+fn enumerate_canonical_children(seed: &CubeMapPos<32>, count: usize, target: usize) -> usize {
+    let mut children = HashSet::new();
     children.clear();
     let shape = seed.extrapolate_dim();
     expand_cube_map(&mut children, seed, &shape, count);
-    children.retain(|child| is_canonical_root(child, count, seed));
+    children.retain(|child| child.is_canonical_root(count, seed));
     if count + 1 == target {
         children.len()
     } else {
         children
             .iter()
-            .map(|child| enumerate_canonical_children(child, count + 1, target, set_stack))
+            .map(|child| enumerate_canonical_children(child, count + 1, target))
             .sum()
     }
 }
@@ -405,9 +216,6 @@ pub fn gen_polycubes(
 ) -> usize {
     let t1_start = Instant::now();
 
-    let total: AtomicUsize = AtomicUsize::new(0);
-    let work_count: AtomicUsize = AtomicUsize::new(0);
-
     let seed_count = current.len();
     let bar = make_bar(seed_count as u64);
     bar.set_message(format!(
@@ -415,51 +223,27 @@ pub fn gen_polycubes(
         calculate_from - 1
     ));
 
+    let process = |seed| {
+        let children = enumerate_canonical_children(&seed, calculate_from - 1, n);
+        bar.set_message(format!(
+            "seed subsets expanded for N = {}...",
+            calculate_from - 1,
+        ));
+        bar.inc(1);
+        children
+    };
+
     //convert input vector of NaivePolyCubes and convert them to
-    if parallel {
-        current.par_iter().for_each(|seed| {
-            let seed = seed.into();
-            let sets = (0..n)
-                .map(|_| RwLock::new(HashSet::new()))
-                .collect::<Vec<_>>();
-            let children = enumerate_canonical_children(&seed, calculate_from - 1, n, &sets);
-            total.fetch_add(children, Ordering::Relaxed);
-            let steps = work_count.fetch_add(1, Ordering::Relaxed) + 1;
-            let t1_now = Instant::now();
-            let time = t1_now.duration_since(t1_start).as_secs() as usize;
-            let rem_time = (time * seed_count) / steps - time;
-            bar.set_message(format!(
-                "seed subsets expanded for N = {}. est {}:{:02}m remaining..",
-                calculate_from - 1,
-                rem_time / 60,
-                rem_time % 60
-            ));
-            bar.inc(1);
-        });
+    let count: usize = if parallel {
+        current
+            .par_iter()
+            .map(|seed| seed.into())
+            .map(process)
+            .sum()
     } else {
-        current.iter().for_each(|seed| {
-            let seed = seed.into();
-            let sets = (0..n)
-                .map(|_| RwLock::new(HashSet::new()))
-                .collect::<Vec<_>>();
-            let children = enumerate_canonical_children(&seed, calculate_from - 1, n, &sets);
-            total.fetch_add(children, Ordering::Relaxed);
-            let steps = work_count.fetch_add(1, Ordering::Relaxed) + 1;
-            let t1_now = Instant::now();
-            let time = t1_now.duration_since(t1_start).as_secs() as usize;
-            let rem_time = (time * seed_count) / steps - time;
-            bar.set_message(format!(
-                "seed subsets expanded for N = {}. est {}:{:02}m remaining..",
-                calculate_from - 1,
-                rem_time / 60,
-                rem_time % 60
-            ));
-            bar.inc(1);
-        });
-    }
-    let count = total.load(Ordering::Relaxed);
-    let t1_stop = Instant::now();
-    let time = t1_stop.duration_since(t1_start).as_micros();
+        current.iter().map(|seed| seed.into()).map(process).sum()
+    };
+    let time = t1_start.elapsed().as_micros();
     bar.set_message(format!(
         "Found {} unique expansions (N = {n}) in  {}.{:06}s",
         count,

@@ -1,8 +1,8 @@
-use std::cmp::max;
+use std::cmp::{max, min};
 
 use opencubes::pcube::RawPCube;
 
-use crate::rotations::{map_coord, MatrixCol};
+use crate::rotations::{map_coord, to_min_rot_points, MatrixCol::*};
 
 /// Polycube representation
 /// stores up to 16 blocks (number of cubes normally implicit or seperate in program state)
@@ -30,12 +30,12 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
 
         //correction matrix to convert to canonical dimension. I dont like it but it works
         let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
-            (MatrixCol::XP, MatrixCol::YP, MatrixCol::ZP, dim)
+            (XP, YP, ZP, dim)
         } else if x >= z && z >= y {
             (
-                MatrixCol::XP,
-                MatrixCol::ZP,
-                MatrixCol::YN,
+                XP,
+                ZP,
+                YN,
                 Dim {
                     x: x - 1,
                     y: z - 1,
@@ -44,9 +44,9 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
             )
         } else if y >= x && x >= z {
             (
-                MatrixCol::YP,
-                MatrixCol::XP,
-                MatrixCol::ZN,
+                YP,
+                XP,
+                ZN,
                 Dim {
                     x: y - 1,
                     y: x - 1,
@@ -55,9 +55,9 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
             )
         } else if y >= z && z >= x {
             (
-                MatrixCol::YP,
-                MatrixCol::ZP,
-                MatrixCol::XP,
+                YP,
+                ZP,
+                XP,
                 Dim {
                     x: y - 1,
                     y: z - 1,
@@ -66,9 +66,9 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
             )
         } else if z >= x && x >= y {
             (
-                MatrixCol::ZN,
-                MatrixCol::XP,
-                MatrixCol::YN,
+                ZN,
+                XP,
+                YN,
                 Dim {
                     x: z - 1,
                     y: x - 1,
@@ -77,9 +77,9 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
             )
         } else if z >= y && y >= x {
             (
-                MatrixCol::ZN,
-                MatrixCol::YN,
-                MatrixCol::XP,
+                ZN,
+                YN,
+                XP,
                 Dim {
                     x: z - 1,
                     y: y - 1,
@@ -143,7 +143,7 @@ impl<const N: usize> From<CubeMapPos<N>> for RawPCube {
 
 impl<const N: usize> CubeMapPos<N> {
     pub fn new() -> Self {
-        CubeMapPos {cubes: [0; N]}
+        CubeMapPos { cubes: [0; N] }
     }
     pub fn extrapolate_count(&self) -> usize {
         let mut count = 1;
@@ -164,6 +164,159 @@ impl<const N: usize> CubeMapPos<N> {
             dim.z = max(dim.z, iz as usize);
         }
         dim
+    }
+
+    fn is_continuous(&self, len: usize) -> bool {
+        let start = self.cubes[0];
+        let mut polycube2 = [start; 32];
+        for i in 1..len {
+            polycube2[i] = self.cubes[i];
+        }
+        let polycube = polycube2;
+        //sets were actually slower even when no allocating
+        let mut to_explore = [start; 32];
+        let mut exp_head = 1;
+        let mut exp_tail = 0;
+        //to_explore[0] = start;
+        while exp_head > exp_tail {
+            let p = to_explore[exp_tail];
+            exp_tail += 1;
+            if p & 0x1f != 0 && !to_explore.contains(&(p - 1)) && polycube.contains(&(p - 1)) {
+                to_explore[exp_head] = p - 1;
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
+                exp_head += 1;
+            }
+            if p & 0x1f != 0x1f && !to_explore.contains(&(p + 1)) && polycube.contains(&(p + 1)) {
+                to_explore[exp_head] = p + 1;
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
+                exp_head += 1;
+            }
+            if (p >> 5) & 0x1f != 0
+                && !to_explore.contains(&(p - (1 << 5)))
+                && polycube.contains(&(p - (1 << 5)))
+            {
+                to_explore[exp_head] = p - (1 << 5);
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
+                exp_head += 1;
+            }
+            if (p >> 5) & 0x1f != 0x1f
+                && !to_explore.contains(&(p + (1 << 5)))
+                && polycube.contains(&(p + (1 << 5)))
+            {
+                to_explore[exp_head] = p + (1 << 5);
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
+                exp_head += 1;
+            }
+            if (p >> 10) & 0x1f != 0
+                && !to_explore.contains(&(p - (1 << 10)))
+                && polycube.contains(&(p - (1 << 10)))
+            {
+                to_explore[exp_head] = p - (1 << 10);
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
+                exp_head += 1;
+            }
+            if (p >> 10) & 0x1f != 0x1f
+                && !to_explore.contains(&(p + (1 << 10)))
+                && polycube.contains(&(p + (1 << 10)))
+            {
+                to_explore[exp_head] = p + (1 << 10);
+                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
+                exp_head += 1;
+            }
+        }
+        exp_head == len
+    }
+
+    fn renormalize(&self, dim: &Dim, count: usize) -> (Self, Dim) {
+        let mut dst = CubeMapPos::new();
+        let x = dim.x;
+        let y = dim.y;
+        let z = dim.z;
+        let (x_col, y_col, z_col, rdim) = if x >= y && y >= z {
+            (XP, YP, ZP, Dim { x: x, y: y, z: z })
+        } else if x >= z && z >= y {
+            (XP, ZP, YN, Dim { x: x, y: z, z: y })
+        } else if y >= x && x >= z {
+            (YP, XP, ZN, Dim { x: y, y: x, z: z })
+        } else if y >= z && z >= x {
+            (YP, ZP, XP, Dim { x: y, y: z, z: x })
+        } else if z >= x && x >= y {
+            (ZN, XP, YN, Dim { x: z, y: x, z: y })
+        } else if z >= y && y >= x {
+            (ZN, YN, XP, Dim { x: z, y: y, z: x })
+        } else {
+            panic!("imposible dimension of shape {:?}", dim)
+        };
+        for (i, d) in self.cubes[0..count].iter().enumerate() {
+            let dx = d & 0x1f;
+            let dy = (d >> 5) & 0x1f;
+            let dz = (d >> 10) & 0x1f;
+            let cx = map_coord(dx, dy, dz, &dim, x_col);
+            let cy = map_coord(dx, dy, dz, &dim, y_col);
+            let cz = map_coord(dx, dy, dz, &dim, z_col);
+            let pack = ((cz << 10) | (cy << 5) | cx) as u16;
+            dst.cubes[i] = pack;
+            // unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
+        }
+        //dst.cubes.sort();
+        (dst, rdim)
+    }
+
+    fn remove_cube(&self, point: usize, count: usize) -> (Self, Dim) {
+        let mut min_corner = Dim {
+            x: 0x1f,
+            y: 0x1f,
+            z: 0x1f,
+        };
+        let mut max_corner = Dim { x: 0, y: 0, z: 0 };
+        let mut root_candidate = CubeMapPos::new();
+        let mut candidate_ptr = 0;
+        for i in 0..=count {
+            if i != point {
+                let pos = self.cubes[i];
+                // let pos = unsafe {*exp.cubes.get_unchecked(i)};
+                let x = pos as usize & 0x1f;
+                let y = (pos as usize >> 5) & 0x1f;
+                let z = (pos as usize >> 10) & 0x1f;
+                min_corner.x = min(min_corner.x, x);
+                min_corner.y = min(min_corner.y, y);
+                min_corner.z = min(min_corner.z, z);
+                max_corner.x = max(max_corner.x, x);
+                max_corner.y = max(max_corner.y, y);
+                max_corner.z = max(max_corner.z, z);
+                root_candidate.cubes[candidate_ptr] = pos;
+                // unsafe {*root_candidate.cubes.get_unchecked_mut(candidate_ptr) = pos;}
+                candidate_ptr += 1;
+            }
+        }
+        let offset = (min_corner.z << 10) | (min_corner.y << 5) | min_corner.x;
+        for i in 0..count {
+            root_candidate.cubes[i] -= offset as u16;
+        }
+        max_corner.x = max_corner.x - min_corner.x;
+        max_corner.y = max_corner.y - min_corner.y;
+        max_corner.z = max_corner.z - min_corner.z;
+        (root_candidate, max_corner)
+    }
+
+    pub fn is_canonical_root(&self, count: usize, seed: &Self) -> bool {
+        for sub_cube_id in 0..=count {
+            let (mut root_candidate, mut dim) = self.remove_cube(sub_cube_id, count);
+            if !root_candidate.is_continuous(count) {
+                continue;
+            }
+            if dim.x < dim.y || dim.y < dim.z || dim.x < dim.z {
+                let (rroot_candidate, rdim) = root_candidate.renormalize(&dim, count);
+                root_candidate = rroot_candidate;
+                dim = rdim;
+                root_candidate.cubes[0..count].sort_unstable();
+            }
+            let mrp = to_min_rot_points(&root_candidate, &dim, count);
+            if &mrp < seed {
+                return false;
+            }
+        }
+        true
     }
 }
 

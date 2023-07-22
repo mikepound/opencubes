@@ -371,7 +371,12 @@ pub fn rot_matrix_points<const N: usize>(
 }
 
 #[inline]
-fn xy_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
+fn xy_rots_points<const N: usize>(
+    map: &CubeMapPos<N>,
+    shape: &Dim,
+    count: usize,
+    res: &mut CubeMapPos<N>,
+) {
     *res = min(
         *res,
         rot_matrix_points(
@@ -426,7 +431,12 @@ fn xy_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize
 }
 
 #[inline]
-fn yz_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
+fn yz_rots_points<const N: usize>(
+    map: &CubeMapPos<N>,
+    shape: &Dim,
+    count: usize,
+    res: &mut CubeMapPos<N>,
+) {
     *res = min(
         *res,
         rot_matrix_points(
@@ -481,7 +491,12 @@ fn yz_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize
 }
 
 #[inline]
-fn xyz_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
+fn xyz_rots_points<const N: usize>(
+    map: &CubeMapPos<N>,
+    shape: &Dim,
+    count: usize,
+    res: &mut CubeMapPos<N>,
+) {
     //xz
     *res = min(
         *res,
@@ -641,7 +656,11 @@ fn xyz_rots_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usiz
     );
 }
 
-pub fn to_min_rot_points<const N: usize>(map: &CubeMapPos<N>, shape: &Dim, count: usize) -> CubeMapPos<N> {
+pub fn to_min_rot_points<const N: usize>(
+    map: &CubeMapPos<N>,
+    shape: &Dim,
+    count: usize,
+) -> CubeMapPos<N> {
     let mut res = *map;
     if shape.x == shape.y && shape.x != 0 {
         xy_rots_points(map, shape, count, &mut res);

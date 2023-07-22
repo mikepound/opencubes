@@ -54,7 +54,7 @@ pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     let pos_width = format!("{len}").len();
 
     let template =
-        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} remaining: [{{eta_precise}}] {{msg}}");
 
     bar.set_style(
         ProgressStyle::with_template(&template)

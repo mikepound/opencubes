@@ -1,8 +1,8 @@
 use std::{cmp::max, time::Instant};
 
+use crate::pcube::RawPCube;
 use hashbrown::HashSet;
 use indicatif::ProgressBar;
-use crate::pcube::RawPCube;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
@@ -212,7 +212,7 @@ pub fn gen_polycubes(
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
-    bar: &ProgressBar
+    bar: &ProgressBar,
 ) -> usize {
     let t1_start = Instant::now();
 

@@ -8,8 +8,10 @@ use std::{
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use opencubes::{
+    hashless,
     naive_polycube::NaivePolyCube,
-    pcube::{PCubeFile, RawPCube}, pointlist, rotation_reduced, hashless,
+    pcube::{PCubeFile, RawPCube},
+    pointlist, rotation_reduced,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
@@ -360,7 +362,7 @@ fn unique_expansions<F>(
     compression: Compression,
     current: Vec<RawPCube>,
     calculate_from: usize,
-    bar: &ProgressBar
+    bar: &ProgressBar,
 ) -> Vec<NaivePolyCube>
 where
     F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
@@ -443,7 +445,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 opts.cache_compression,
                 seed_list,
                 startn,
-                &bar
+                &bar,
             );
             cubes.len()
         }
@@ -457,7 +459,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 opts.cache_compression,
                 seed_list,
                 startn,
-                &bar
+                &bar,
             );
             cubes.len()
         }
@@ -476,19 +478,11 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 println!("n > 16 not supported for point-list");
                 return;
             }
-            let cubes = pointlist::gen_polycubes(
-                n,
-                cache,
-                !para,
-                seed_list,
-                startn,
-                &bar
-            );
+            let cubes = pointlist::gen_polycubes(n, cache, !para, seed_list, startn, &bar);
             cubes.len()
         }
         (EnumerationMode::Hashless, para) => {
-            hashless::gen_polycubes(n, !para, seed_list, startn,
-                &bar)
+            hashless::gen_polycubes(n, !para, seed_list, startn, &bar)
         }
     };
 

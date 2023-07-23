@@ -5,9 +5,9 @@ use crate::{
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
 };
 
+use crate::pcube::RawPCube;
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
-use crate::pcube::RawPCube;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
@@ -346,7 +346,7 @@ pub fn gen_polycubes(
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
-    bar: &ProgressBar
+    bar: &ProgressBar,
 ) -> Vec<CubeMapPos<16>> {
     let t1_start = Instant::now();
 

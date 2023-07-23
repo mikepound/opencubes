@@ -20,7 +20,7 @@ pub trait IntoUniquePolycubeIterator
 where
     Self: Sized + PolycubeIterator,
 {
-    fn into_unique(self) -> Option<UniquePolycubes<Self>> {
+    fn into_unique(self) -> UniquePolycubes<Self> {
         UniquePolycubes::new(self)
     }
 }
@@ -59,14 +59,10 @@ impl<T> UniquePolycubes<T>
 where
     T: PolycubeIterator,
 {
-    pub fn new(inner: T) -> Option<Self> {
-        if inner.is_canonical() {
-            Some(Self {
-                inner,
-                stored: HashMap::new(),
-            })
-        } else {
-            None
+    pub fn new(inner: T) -> Self {
+        Self {
+            inner,
+            stored: HashMap::new(),
         }
     }
 }

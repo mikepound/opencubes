@@ -3,6 +3,7 @@
 use std::{
     fs::File,
     io::{ErrorKind, Read, Seek, Write},
+    iter::Peekable,
     path::Path,
 };
 
@@ -13,7 +14,9 @@ mod compression;
 pub use compression::Compression;
 use compression::{Reader, Writer};
 
-use crate::iterator::PolycubeIterator;
+use crate::iterator::{
+    AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
+};
 
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
@@ -159,6 +162,11 @@ where
 
     pub fn into_iter(self) -> impl PolycubeIterator {
         IgnoreErrorIter::new(self)
+    }
+
+    /// This is by no means guaranteed, but makes life a bit easier
+    pub fn assume_all_unique(self) -> impl AllUniquePolycubeIterator {
+        AllUnique::new(self)
     }
 }
 
@@ -307,3 +315,79 @@ where
         self.inner.canonical()
     }
 }
+
+struct AllUnique<T>
+where
+    T: Read,
+{
+    n: usize,
+    canonical: bool,
+    inner: Peekable<IgnoreErrorIter<T>>,
+}
+
+impl<T> AllUnique<T>
+where
+    T: Read,
+{
+    pub fn new(inner: PCubeFile<T>) -> Self {
+        let canonical = inner.canonical();
+        let mut peekable = IgnoreErrorIter::new(inner).peekable();
+
+        let n = if let Some(peek) = peekable.peek() {
+            let mut n = 0;
+            let (x, y, z) = peek.dims();
+            for x in 0..x {
+                for y in 0..y {
+                    for z in 0..z {
+                        if peek.get(x, y, z) {
+                            n += 1;
+                        }
+                    }
+                }
+            }
+
+            n
+        } else {
+            0
+        };
+
+        Self {
+            n,
+            canonical,
+            inner: peekable,
+        }
+    }
+}
+
+impl<T> Iterator for AllUnique<T>
+where
+    T: Read,
+{
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
+impl<T> PolycubeIterator for AllUnique<T>
+where
+    T: Read,
+{
+    fn is_canonical(&self) -> bool {
+        self.canonical
+    }
+}
+
+impl<T> UniquePolycubeIterator for AllUnique<T> where T: Read {}
+
+impl<T> AllPolycubeIterator for AllUnique<T>
+where
+    T: Read,
+{
+    fn n(&self) -> usize {
+        self.n
+    }
+}
+
+impl<T> AllUniquePolycubeIterator for AllUnique<T> where T: Read {}

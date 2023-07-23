@@ -138,7 +138,7 @@ This allows us to not use a hash table and parallelize computation as in issue #
   2.  Find the canonical representation of p+1, and remove the last cube to create p+1-1
   3.  If p+1-1 is the same polycube as p (in some orientation), save p+1
 
-I know other people have already implemented ways of getting rid of a hash table, or splitting computation computation by the dimensions of the polycube.  (see issue #27 and PR #26 and #28).  I haven't had the time to fully read through everything that has been done, but hopefully this is a somewhat novel way of looking at the problem.  It's been a lot of fun coding a proof of concept even if I know a javascript implementation isn't going to go anywhere ;)
+I know other people have already implemented ways of getting rid of a hash table, or splitting computation computation by the dimensions of the polycube.  (see issue #27 and PR #26 and #28).  These people are much better coders than me, and I haven't had the time to fully read through everything that has been done, but hopefully this is an interesting way of looking at the problem.  It's been a lot of fun coding a proof of concept even if I know a javascript implementation isn't going to go anywhere ;)
 
 ## Notes of the code
 

@@ -30,6 +30,7 @@ int CacheReader::printShapes(void) {
 }
 
 int CacheReader::loadFile(const std::string path) {
+    unload();
     path_ = path;
     fileDescriptor_ = open(path.c_str(), O_RDONLY);
 
@@ -69,7 +70,7 @@ ShapeRange CacheReader::getCubesByShape(uint32_t i) {
     return ShapeRange(start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
 }
 
-CacheReader::~CacheReader() {
+void CacheReader::unload() {
     // unmap file from memory
     if (fileLoaded_) {
         if (munmap(filePointer, fileSize_) == -1) {
@@ -82,3 +83,5 @@ CacheReader::~CacheReader() {
         fileLoaded_ = false;
     }
 }
+
+CacheReader::~CacheReader() { unload(); }

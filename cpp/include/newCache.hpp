@@ -92,6 +92,7 @@ class CacheReader : public ICache {
     void printHeader();
     int printShapes();
     int loadFile(const std::string path);
+    void unload();
 
     size_t size() override { return header->numPolycubes; };
     uint32_t numShapes() override { return header->numShapes; };

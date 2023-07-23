@@ -210,7 +210,6 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
 
             if (use_split_cache) {
                 // load cache file only for this shape
-                cr = CacheReader();  // TODO: this is just to call destructor of old CacheReader!
                 std::string cachefile = "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
                                         std::to_string(prevShapes[sid].y()) + "-" + std::to_string(prevShapes[sid].z()) + ".bin";
                 cr.loadFile(cachefile);

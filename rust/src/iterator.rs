@@ -8,9 +8,10 @@ where
     Self: Sized,
 {
     /// Returns true if all polycubes returned are in _some_ canonical
-    /// form. No guarantee is provided about the "type" of canonicality,
-    /// but if this returns `true` it is guaranteed that all cubes returned
-    /// by this iterator are in a form that can be used for comparison.
+    /// form. No guarantee is provided about the type of canonicality, nor
+    /// about uniqueness. However, if this returns `true` it is guaranteed
+    /// that all cubes returned by this iterator are in a form that can be
+    /// used directly to check for uniqueness.
     fn is_canonical(&self) -> bool;
 }
 

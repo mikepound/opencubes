@@ -13,6 +13,8 @@ mod compression;
 pub use compression::Compression;
 use compression::{Reader, Writer};
 
+use crate::iterator::PolycubeIterator;
+
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
 /// A pcube file.
@@ -22,7 +24,6 @@ pub struct PCubeFile<T = File>
 where
     T: Read,
 {
-    had_error: bool,
     input: Reader<T>,
     len: Option<usize>,
     cubes_read: usize,
@@ -44,32 +45,7 @@ where
     }
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.had_error {
-            return None;
-        }
-
-        let next_cube = RawPCube::unpack(&mut self.input);
-
-        let next_cube = match (next_cube, self.len) {
-            (Err(_), None) => return None,
-            (Err(e), Some(expected)) => {
-                if expected == self.cubes_read {
-                    return None;
-                } else {
-                    self.had_error = true;
-                    let msg = format!(
-                        "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
-                        self.cubes_read
-                    );
-                    return Some(Err(std::io::Error::new(ErrorKind::InvalidData, msg)));
-                }
-            }
-            (Ok(c), _) => c,
-        };
-
-        self.cubes_read += 1;
-
-        Some(Ok(next_cube))
+        self.next()
     }
 }
 
@@ -155,8 +131,34 @@ where
             len,
             cubes_read: 0,
             cubes_are_canonical: canonicalized,
-            had_error: false,
         })
+    }
+
+    pub fn next(&mut self) -> Option<std::io::Result<RawPCube>> {
+        let next_cube = RawPCube::unpack(&mut self.input);
+
+        match (next_cube, self.len) {
+            (Ok(c), _) => {
+                self.cubes_read += 1;
+                Some(Ok(c))
+            }
+            (Err(_), None) => return None,
+            (Err(e), Some(expected)) => {
+                if expected == self.cubes_read {
+                    return None;
+                } else {
+                    let msg = format!(
+                        "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
+                        self.cubes_read
+                    );
+                    return Some(Err(std::io::Error::new(ErrorKind::InvalidData, msg)));
+                }
+            }
+        }
+    }
+
+    pub fn into_iter(self) -> impl PolycubeIterator {
+        IgnoreErrorIter::new(self)
     }
 }
 
@@ -267,5 +269,41 @@ impl PCubeFile {
         file.write_all(&MAGIC)?;
 
         Ok(())
+    }
+}
+
+struct IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    inner: PCubeFile<T>,
+}
+
+impl<T> IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    pub fn new(inner: PCubeFile<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> Iterator for IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|v| v.ok()).flatten()
+    }
+}
+
+impl<T> PolycubeIterator for IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    fn is_canonical(&self) -> bool {
+        self.inner.canonical()
     }
 }

@@ -6,7 +6,8 @@
 
 #include <iostream>
 
-CacheReader::CacheReader() : path_(""), fileDescriptor_(0), fileSize_(0), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(0) {}
+CacheReader::CacheReader()
+    : filePointer(nullptr), path_(""), fileDescriptor_(-1), fileSize_(0), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(nullptr) {}
 
 void CacheReader::printHeader() {
     if (fileLoaded_) {
@@ -54,7 +55,6 @@ int CacheReader::loadFile(const std::string path) {
 
     header = (Header*)(filePointer);
     shapes = (ShapeEntry*)(filePointer + sizeof(Header));
-    data = (char*)(filePointer + sizeof(Header) + header->numShapes * sizeof(ShapeEntry));
 
     fileLoaded_ = true;
 
@@ -82,6 +82,10 @@ void CacheReader::unload() {
         close(fileDescriptor_);
         fileLoaded_ = false;
     }
+    fileDescriptor_ = -1;
+    filePointer = nullptr;
+    header = &dummyHeader;
+    shapes = nullptr;
 }
 
 CacheReader::~CacheReader() { unload(); }

@@ -153,7 +153,7 @@ struct Worker {
     }
 };
 
-FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache) {
+FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache, bool use_split_cache) {
     Hashy hashes;
     if (n < 1)
         return {};
@@ -167,15 +167,15 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         return FlatCache(hashes, n);
     }
 
-    std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
     CacheReader cr;
-    if (use_cache) {
+    if (use_cache && !use_split_cache) {
+        std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
         cr.loadFile(cachefile);
         cr.printHeader();
     }
     FlatCache fc;
     ICache *base = &cr;
-    if (!cr) {
+    if (!cr && !use_split_cache) {
         fc = gen(n - 1, threads, use_cache, write_cache, false);
         base = &fc;
     }
@@ -185,13 +185,13 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
     auto start = std::chrono::steady_clock::now();
     uint32_t totalOutputShapes = hashes.byshape.size();
     uint32_t outShapeCount = 0;
+    auto prevShapes = Hashy::generateShapes(n - 1);
     for (auto &tup : hashes.byshape) {
         outShapeCount++;
         XYZ targetShape = tup.first;
         std::printf("process output shape %3d/%d [%2d %2d %2d]\n\r", outShapeCount, totalOutputShapes, targetShape.x(), targetShape.y(), targetShape.z());
-        for (uint32_t sid = 0; sid < base->numShapes(); ++sid) {
-            auto s = base->getCubesByShape(sid);
-            auto &shape = s.shape();
+        for (uint32_t sid = 0; sid < prevShapes.size(); ++sid) {
+            auto &shape = prevShapes[sid];
             int diffx = targetShape.x() - shape.x();
             int diffy = targetShape.y() - shape.y();
             int diffz = targetShape.z() - shape.z();
@@ -206,7 +206,20 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             if (diffy == 1)
                 if (shape.y() == shape.x()) diffx = 1;
 
-            std::printf("  shape %d %d %d: #%lu\n\r", shape.x(), shape.y(), shape.z(), s.size());
+            std::printf("  shape %d %d %d\n\r", shape.x(), shape.y(), shape.z());
+
+            if (use_split_cache) {
+                // load cache file only for this shape
+                std::string cachefile = "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
+                                        std::to_string(prevShapes[sid].y()) + "-" + std::to_string(prevShapes[sid].z()) + ".bin";
+                cr.loadFile(cachefile);
+                // cr.printHeader();
+            }
+            auto s = base->getCubesByShape(sid);
+            if (shape != s.shape()) {
+                std::printf("ERROR caches shape does not match expected shape!\n");
+                exit(-1);
+            }
             // std::printf("starting %d threads\n\r", threads);
             std::vector<std::thread> ts;
             Workset ws(s, hashes, targetShape, shape, XYZ(diffx, diffy, diffz), abssum);

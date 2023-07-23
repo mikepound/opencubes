@@ -70,15 +70,22 @@ struct Hashy {
     };
 
     std::map<XYZ, Subhashy<32>> byshape;
-    void init(int n) {
-        // create all subhashy which will be needed for N
+
+    static std::vector<XYZ> generateShapes(int n) {
+        std::vector<XYZ> out;
         for (int x = 0; x < n; ++x)
             for (int y = x; y < (n - x); ++y)
                 for (int z = y; z < (n - x - y); ++z) {
                     if ((x + 1) * (y + 1) * (z + 1) < n)  // not enough space for n cubes
                         continue;
-                    byshape[XYZ(x, y, z)].size();
+                    out.emplace_back(x, y, z);
                 }
+        return out;
+    }
+
+    void init(int n) {
+        // create all subhashy which will be needed for N
+        for (auto s : generateShapes(n)) byshape[s].size();
         std::printf("%ld sets by shape for N=%d\n\r", byshape.size(), n);
     }
 

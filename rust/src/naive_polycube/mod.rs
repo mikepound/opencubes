@@ -375,10 +375,11 @@ impl NaivePolyCube {
         where
             T: Iterator<Item = NaivePolyCube>,
         {
-            fn new(from_set: T) -> Self {
+            fn new(mut from_set: T) -> Self {
+                let current_expander = from_set.next().map(|v| v.expand());
                 Self {
                     from_set,
-                    current_expander: None,
+                    current_expander,
                 }
             }
         }
@@ -390,7 +391,7 @@ impl NaivePolyCube {
             type Item = NaivePolyCube;
 
             fn next(&mut self) -> Option<Self::Item> {
-                loop {
+                while self.current_expander.is_some() {
                     if let Some(ref mut current_expander) = self.current_expander {
                         if let Some(next_expansion) = current_expander.next().map(|v| v.crop()) {
                             return Some(next_expansion);
@@ -401,16 +402,14 @@ impl NaivePolyCube {
                         .from_set
                         .next()
                         .map(|v| NaivePolyCube::from(v).expand());
-
-                    // No more expansions
-                    if self.current_expander.is_none() {
-                        return None;
-                    }
                 }
+
+                None
             }
         }
 
         impl<T> FusedIterator for AllExpansions<T> where T: Iterator<Item = NaivePolyCube> {}
+        impl<T> ExactSizeIterator for AllExpansions<T> where T: ExactSizeIterator<Item = NaivePolyCube> {}
 
         AllExpansions::new(from_set)
     }

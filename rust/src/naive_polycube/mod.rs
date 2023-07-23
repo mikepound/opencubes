@@ -362,50 +362,38 @@ impl NaivePolyCube {
         cube_next
     }
 
-    /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
-    /// items in `from_set`.
-    pub fn unique_expansions<I>(from_set: I) -> impl AllUniquePolycubeIterator
+    pub fn expansions<I>(from_set: I) -> impl Iterator<Item = Self>
     where
-        I: AllUniquePolycubeIterator + ExactSizeIterator,
+        I: Iterator<Item = NaivePolyCube>,
     {
-        struct AllUniques<T> {
-            stored: HashSet<NaivePolyCube>,
+        struct AllExpansions<T> {
             current_expander: Option<expander::ExpansionIterator>,
             from_set: T,
         }
 
-        impl<T> AllUniques<T>
+        impl<T> AllExpansions<T>
         where
-            T: AllUniquePolycubeIterator,
+            T: Iterator<Item = NaivePolyCube>,
         {
             fn new(from_set: T) -> Self {
                 Self {
-                    stored: HashSet::new(),
                     from_set,
                     current_expander: None,
                 }
             }
         }
 
-        impl<T> Iterator for AllUniques<T>
+        impl<T> Iterator for AllExpansions<T>
         where
-            T: Iterator<Item = RawPCube>,
+            T: Iterator<Item = NaivePolyCube>,
         {
-            type Item = RawPCube;
+            type Item = NaivePolyCube;
 
             fn next(&mut self) -> Option<Self::Item> {
                 loop {
                     if let Some(ref mut current_expander) = self.current_expander {
-                        while let Some(next_expansion) = current_expander.next().map(|v| v.crop()) {
-                            if self.stored.contains(&next_expansion) {
-                                continue;
-                            }
-
-                            let canonical = next_expansion.canonical_form();
-
-                            if self.stored.insert(canonical.clone()) {
-                                return Some(canonical.into());
-                            }
+                        if let Some(next_expansion) = current_expander.next().map(|v| v.crop()) {
+                            return Some(next_expansion);
                         }
                     }
 
@@ -422,25 +410,69 @@ impl NaivePolyCube {
             }
         }
 
-        impl<T> PolycubeIterator for AllUniques<T>
-        where
-            T: PolycubeIterator,
-        {
-            fn is_canonical(&self) -> bool {
-                self.from_set.is_canonical()
+        impl<T> FusedIterator for AllExpansions<T> where T: Iterator<Item = NaivePolyCube> {}
+
+        AllExpansions::new(from_set)
+    }
+
+    /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
+    /// items in `from_set`.
+    pub fn unique_expansions<I>(from_set: I) -> impl AllUniquePolycubeIterator
+    where
+        I: AllUniquePolycubeIterator,
+    {
+        let out_n = from_set.n() + 1;
+        let mut uniques = HashSet::new();
+
+        Self::expansions(from_set.map(NaivePolyCube::from)).for_each(|v| {
+            if uniques.contains(&v) {
+                return;
             }
 
-            fn n_hint(&self) -> Option<usize> {
-                self.from_set.n_hint()
+            let max = v.canonical_form();
+
+            uniques.insert(max);
+        });
+
+        struct AllUniques {
+            uniques: std::collections::hash_set::IntoIter<NaivePolyCube>,
+            n: usize,
+            is_canonical: bool,
+        }
+
+        impl Iterator for AllUniques {
+            type Item = RawPCube;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.uniques.next().map(|v| RawPCube::from(v))
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                self.uniques.size_hint()
             }
         }
 
-        impl<T> FusedIterator for AllUniques<T> where T: Iterator<Item = RawPCube> {}
-        impl<T> UniquePolycubeIterator for AllUniques<T> where T: PolycubeIterator {}
-        impl<T> AllPolycubeIterator for AllUniques<T> where T: AllPolycubeIterator {}
-        impl<T> AllUniquePolycubeIterator for AllUniques<T> where T: AllUniquePolycubeIterator {}
+        impl PolycubeIterator for AllUniques {
+            fn is_canonical(&self) -> bool {
+                self.is_canonical
+            }
 
-        AllUniques::new(from_set)
+            fn n_hint(&self) -> Option<usize> {
+                Some(self.n)
+            }
+        }
+
+        impl FusedIterator for AllUniques {}
+        impl ExactSizeIterator for AllUniques {}
+        impl UniquePolycubeIterator for AllUniques {}
+        impl AllPolycubeIterator for AllUniques {}
+        impl AllUniquePolycubeIterator for AllUniques {}
+
+        AllUniques {
+            uniques: uniques.into_iter(),
+            n: out_n,
+            is_canonical: false,
+        }
     }
 
     /// Check whether this cube is already cropped.

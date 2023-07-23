@@ -153,7 +153,7 @@ pub mod indicatif {
             let n_hint = inner.n_hint();
 
             Self {
-                inner: inner,
+                inner,
                 bar,
                 is_canonical,
                 n_hint,

@@ -26,7 +26,7 @@ Given a root cube and an orientation, we can encode a cube by its adjacency grap
         +--+
 ```
 
-We choose a cube (cube #0) and the orientation [Left Right Up Down Forward Back].  Record the adjacent cubes to cube #0 as six bits:
+We choose a cube (`cube #0`) and the orientation [Left Right Up Down Forward Back].  Record the adjacent cubes to `cube #0` as six bits:
 
 ```
          +--+
@@ -44,7 +44,7 @@ We choose a cube (cube #0) and the orientation [Left Right Up Down Forward Back]
   010000
 ```
 
-We add any adjacent cubes to our cube order.  We have marked cube #1.  We can now repeat the process for cube #1:
+We add any adjacent cubes to our cube order.  We have marked `cube #1`.  We can now repeat the process for `cube #1`:
 
 ```
          +--+
@@ -62,7 +62,7 @@ We add any adjacent cubes to our cube order.  We have marked cube #1.  We can no
   010000  110001
 ```
 
-There are two new adjacent cubes.  They are added to our list of cubes in the same order as our orientation (in this case, first Left, then Right, Up, Down, Forward and Back.  This would be different if we picked a different orientation).  We now repeat the process for cube #2:
+There are two new adjacent cubes.  They are added to our list of cubes in the same order as our orientation (in this case, first Left, then Right, Up, Down, Forward and Back.  This would be different if we picked a different orientation).  We now repeat the process for `cube #2`:
 
 ```
          +--+
@@ -108,7 +108,7 @@ Define the canonical representation of a cube to be the maximum represention ove
         +--+
 ```
 
-This was encoded by choosing the middle cube to be cube #0 - this is the only cube that can be encoded with three ones at the beginning of its adjacency graph, so we do not need to consider any other cubes as root. The representation was maxed when we chose the orientation RLBFDU.
+This was encoded by choosing the middle cube to be `cube #0` - this is the only cube that can be encoded with three ones at the beginning of its adjacency graph, so we do not need to consider any other cubes as root. The representation was maxed when we chose the orientation RLBFDU.
 
 When we parse this representation, we do not know the orientation it was encoded with, so we will get the same cube in (possibly) a different orientation.
 

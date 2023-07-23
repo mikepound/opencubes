@@ -2,7 +2,6 @@
 
 use std::{collections::HashSet, iter::FusedIterator};
 
-use indicatif::ProgressBar;
 use parking_lot::RwLock;
 
 use crate::{
@@ -562,52 +561,88 @@ impl NaivePolyCube {
 
 impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions_rayon<'a, I>(bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions_rayon<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator + Clone + Send + Sync,
+        I: AllUniquePolycubeIterator + ExactSizeIterator + Clone + Send + Sync + 'static,
     {
         use rayon::prelude::*;
 
-        if from_set.len() == 0 {
-            return Vec::new();
-        }
+        let (tx, rx) = crossbeam_channel::bounded(1024);
+        let next_n = from_set.n() + 1;
 
-        let available_parallelism = num_cpus::get();
+        std::thread::spawn(move || {
+            if from_set.len() == 0 {
+                return;
+            }
 
-        let chunk_size = (from_set.len() / available_parallelism) + 1;
-        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
+            let available_parallelism = num_cpus::get();
 
-        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
-            from_set
-                .clone()
-                .skip(v * chunk_size)
-                .take(chunk_size)
-                .into_iter()
-        });
+            let chunk_size = (from_set.len() / available_parallelism) + 1;
+            let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
 
-        let this_level = RwLock::new(HashSet::new());
+            let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
+                from_set
+                    .clone()
+                    .skip(v * chunk_size)
+                    .take(chunk_size)
+                    .into_iter()
+            });
 
-        chunk_iterator.for_each(|v| {
-            for value in v {
-                for expansion in value.expand().map(|v| v.crop()) {
-                    // Skip expansions that are already in the list.
-                    if this_level.read().contains(&expansion) {
-                        continue;
-                    }
+            let this_level = RwLock::new(HashSet::new());
 
-                    let max = expansion.canonical_form();
+            chunk_iterator.for_each(|v| {
+                for value in v {
+                    for expansion in NaivePolyCube::from(value).expand().map(|v| v.crop()) {
+                        // Skip expansions that are already in the list.
+                        if this_level.read().contains(&expansion) {
+                            continue;
+                        }
 
-                    let missing = !this_level.read().contains(&max);
+                        let max = expansion.canonical_form();
 
-                    if missing {
-                        this_level.write().insert(max);
+                        let missing = !this_level.read().contains(&max);
+
+                        if missing {
+                            if this_level.write().insert(max.clone()) {
+                                tx.send(RawPCube::from(max)).unwrap();
+                            }
+                        }
                     }
                 }
-
-                bar.inc(1);
-            }
+            });
         });
 
-        this_level.into_inner().into_iter().collect()
+        struct AllUniques {
+            inner: crossbeam_channel::IntoIter<RawPCube>,
+            n_hint: Option<usize>,
+        }
+
+        impl Iterator for AllUniques {
+            type Item = RawPCube;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.inner.next()
+            }
+        }
+
+        impl PolycubeIterator for AllUniques {
+            fn is_canonical(&self) -> bool {
+                false
+            }
+
+            fn n_hint(&self) -> Option<usize> {
+                self.n_hint
+            }
+        }
+
+        impl FusedIterator for AllUniques {}
+        impl UniquePolycubeIterator for AllUniques {}
+        impl AllPolycubeIterator for AllUniques {}
+        impl AllUniquePolycubeIterator for AllUniques {}
+
+        AllUniques {
+            inner: rx.into_iter(),
+            n_hint: Some(next_n),
+        }
     }
 }

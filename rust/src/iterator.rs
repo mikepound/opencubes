@@ -130,14 +130,16 @@ impl<T> AllUniquePolycubeIterator for UniquePolycubes<T> where T: AllPolycubeIte
 
 // TODO: hide this behind a feature?
 pub mod indicatif {
-    use indicatif::{ProgressBar, ProgressIterator};
+    use indicatif::ProgressBar;
 
     use super::{
         AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
     };
 
+    #[derive(Clone)]
     pub struct PolycubeProgressBarIter<T> {
-        inner: indicatif::ProgressBarIter<T>,
+        bar: ProgressBar,
+        inner: T,
         is_canonical: bool,
         n_hint: Option<usize>,
     }
@@ -151,7 +153,8 @@ pub mod indicatif {
             let n_hint = inner.n_hint();
 
             Self {
-                inner: inner.progress_with(bar),
+                inner: inner,
+                bar,
                 is_canonical,
                 n_hint,
             }
@@ -165,7 +168,12 @@ pub mod indicatif {
         type Item = T::Item;
 
         fn next(&mut self) -> Option<Self::Item> {
+            self.bar.inc(1);
             self.inner.next()
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            self.inner.size_hint()
         }
     }
 

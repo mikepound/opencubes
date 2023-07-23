@@ -388,6 +388,7 @@ name = "opencubes"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "crossbeam-channel",
  "flate2",
  "hashbrown",
  "indicatif",

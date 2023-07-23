@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, HashSet},
     io::ErrorKind,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -361,8 +362,10 @@ fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
     (current, 2)
 }
 
+#[derive(Clone)]
 struct AllUniques {
-    current: std::vec::IntoIter<RawPCube>,
+    current: Arc<std::vec::Vec<RawPCube>>,
+    offset: usize,
     n: usize,
 }
 
@@ -370,19 +373,18 @@ impl Iterator for AllUniques {
     type Item = RawPCube;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.current.next()
+        let output = self.current.get(self.offset)?.clone();
+        self.offset += 1;
+        Some(output)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.current.size_hint()
+        let len = self.current.len() - self.offset;
+        (len, Some(len))
     }
 }
 
-impl ExactSizeIterator for AllUniques {
-    fn len(&self) -> usize {
-        self.current.len()
-    }
-}
+impl ExactSizeIterator for AllUniques {}
 
 impl PolycubeIterator for AllUniques {
     fn is_canonical(&self) -> bool {
@@ -415,7 +417,8 @@ where
     }
 
     let mut current = AllUniques {
-        current: current.into_iter(),
+        current: Arc::new(current),
+        offset: 0,
         n: calculate_from,
     };
 
@@ -453,7 +456,8 @@ where
         }
 
         current = AllUniques {
-            current: next.into_iter(),
+            current: Arc::new(next),
+            offset: 0,
             n: i + 1,
         };
     }
@@ -497,18 +501,15 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::Standard, false) => {
-            todo!()
-            // let cubes = unique_expansions(
-            //     |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
-            //         NaivePolyCube::unique_expansions_rayon(bar, current)
-            //     },
-            //     cache,
-            //     n,
-            //     opts.cache_compression,
-            //     seed_list,
-            //     startn,
-            // );
-            // cubes.len()
+            let cubes = unique_expansions(
+                NaivePolyCube::unique_expansions_rayon,
+                cache,
+                n,
+                opts.cache_compression,
+                seed_list,
+                startn,
+            );
+            cubes.len()
         }
         (EnumerationMode::RotationReduced, para) => {
             if n > 16 {

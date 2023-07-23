@@ -130,10 +130,7 @@ class CacheReader : public ICache {
     ShapeRange getCubesByShape(uint32_t i) override;
 
    private:
-    // vars
-    char* data;
     uint8_t* filePointer;
-    // private vars
     std::string path_;
     int fileDescriptor_;
     uint64_t fileSize_;

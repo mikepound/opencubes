@@ -87,7 +87,7 @@ impl Iterator for ExpansionIterator {
 
                 let mut next_cube = self.padded_cube.clone();
                 next_cube.set(d1, d2, d3).unwrap();
-                return Some(next_cube.crop());
+                return Some(next_cube);
             } else {
                 return None;
             }

@@ -1,11 +1,16 @@
 //! A rather naive polycube implementation.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, iter::FusedIterator};
 
 use indicatif::ProgressBar;
 use parking_lot::RwLock;
 
-use crate::pcube::RawPCube;
+use crate::{
+    iterator::{
+        AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
+    },
+    pcube::RawPCube,
+};
 
 mod expander;
 mod rotations;
@@ -360,34 +365,83 @@ impl NaivePolyCube {
 
     /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
     /// items in `from_set`.
-    ///
-    // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions<'a, I>(progress_bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator,
+        I: AllUniquePolycubeIterator + ExactSizeIterator,
     {
-        let mut this_level = HashSet::new();
-
-        for value in from_set {
-            for expansion in value.expand().map(|v| v.crop()) {
-                // Skip expansions that are already in the list.
-                if this_level.contains(&expansion) {
-                    continue;
-                }
-
-                let max = expansion.canonical_form();
-
-                let missing = !this_level.contains(&max);
-
-                if missing {
-                    this_level.insert(max);
-                }
-            }
-
-            progress_bar.inc(1);
+        struct AllUniques<T> {
+            stored: HashSet<NaivePolyCube>,
+            current_expander: Option<expander::ExpansionIterator>,
+            from_set: T,
         }
 
-        this_level.into_iter().collect()
+        impl<T> AllUniques<T>
+        where
+            T: AllUniquePolycubeIterator,
+        {
+            fn new(from_set: T) -> Self {
+                Self {
+                    stored: HashSet::new(),
+                    from_set,
+                    current_expander: None,
+                }
+            }
+        }
+
+        impl<T> Iterator for AllUniques<T>
+        where
+            T: Iterator<Item = RawPCube>,
+        {
+            type Item = RawPCube;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                loop {
+                    if let Some(ref mut current_expander) = self.current_expander {
+                        while let Some(next_expansion) = current_expander.next().map(|v| v.crop()) {
+                            if self.stored.contains(&next_expansion) {
+                                continue;
+                            }
+
+                            let canonical = next_expansion.canonical_form();
+
+                            if self.stored.insert(canonical.clone()) {
+                                return Some(canonical.into());
+                            }
+                        }
+                    }
+
+                    self.current_expander = self
+                        .from_set
+                        .next()
+                        .map(|v| NaivePolyCube::from(v).expand());
+
+                    // No more expansions
+                    if self.current_expander.is_none() {
+                        return None;
+                    }
+                }
+            }
+        }
+
+        impl<T> PolycubeIterator for AllUniques<T>
+        where
+            T: PolycubeIterator,
+        {
+            fn is_canonical(&self) -> bool {
+                self.from_set.is_canonical()
+            }
+
+            fn n_hint(&self) -> Option<usize> {
+                self.from_set.n_hint()
+            }
+        }
+
+        impl<T> FusedIterator for AllUniques<T> where T: Iterator<Item = RawPCube> {}
+        impl<T> UniquePolycubeIterator for AllUniques<T> where T: PolycubeIterator {}
+        impl<T> AllPolycubeIterator for AllUniques<T> where T: AllPolycubeIterator {}
+        impl<T> AllUniquePolycubeIterator for AllUniques<T> where T: AllUniquePolycubeIterator {}
+
+        AllUniques::new(from_set)
     }
 
     /// Check whether this cube is already cropped.

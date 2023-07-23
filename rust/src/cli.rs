@@ -8,6 +8,10 @@ use std::{
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use opencubes::{
+    iterator::{
+        indicatif::PolycubeProgressBarIter, AllPolycubeIterator, AllUniquePolycubeIterator,
+        PolycubeIterator, UniquePolycubeIterator,
+    },
     naive_polycube::NaivePolyCube,
     pcube::{PCubeFile, RawPCube},
 };
@@ -357,26 +361,63 @@ fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
     (current, 2)
 }
 
-fn unique_expansions<F>(
-    mut expansion_fn: F,
+struct AllUniques {
+    current: std::vec::IntoIter<RawPCube>,
+    n: usize,
+}
+
+impl Iterator for AllUniques {
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.current.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.current.size_hint()
+    }
+}
+
+impl ExactSizeIterator for AllUniques {
+    fn len(&self) -> usize {
+        self.current.len()
+    }
+}
+
+impl PolycubeIterator for AllUniques {
+    fn is_canonical(&self) -> bool {
+        false
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        Some(self.n)
+    }
+}
+
+impl AllPolycubeIterator for AllUniques {}
+impl UniquePolycubeIterator for AllUniques {}
+impl AllUniquePolycubeIterator for AllUniques {}
+
+fn unique_expansions<F, O>(
+    expansion_fn: F,
     use_cache: bool,
     n: usize,
     compression: Compression,
     current: Vec<RawPCube>,
     calculate_from: usize,
-) -> Vec<NaivePolyCube>
+) -> Vec<RawPCube>
 where
-    F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
+    F: Fn(PolycubeProgressBarIter<AllUniques>) -> O,
+    O: AllUniquePolycubeIterator,
 {
     if n == 0 {
         return Vec::new();
     }
 
-    let mut current = current
-        .into_iter()
-        .map(NaivePolyCube::from)
-        .map(|v| v.canonical_form())
-        .collect::<Vec<_>>();
+    let mut current = AllUniques {
+        current: current.into_iter(),
+        n: calculate_from,
+    };
 
     for i in calculate_from..=n {
         let bar = make_bar(current.len() as u64);
@@ -384,7 +425,8 @@ where
 
         let start = Instant::now();
 
-        let next = expansion_fn(&bar, current.iter());
+        let with_bar = PolycubeProgressBarIter::new(bar.clone(), current);
+        let next: Vec<RawPCube> = expansion_fn(with_bar).collect();
 
         bar.set_message(format!(
             "Found {} unique expansions (N = {i}) in {} ms.",
@@ -398,17 +440,25 @@ where
             let name = &format!("cubes_{i}.pcube");
             if !std::fs::File::open(name).is_ok() {
                 println!("Saving {} cubes to cache file", next.len());
-                PCubeFile::write_file(false, compression.into(), next.iter().map(Into::into), name)
-                    .unwrap();
+                PCubeFile::write_file(
+                    false,
+                    compression.into(),
+                    next.iter().map(Clone::clone),
+                    name,
+                )
+                .unwrap();
             } else {
                 println!("Cache file already exists for N = {i}. Not overwriting.");
             }
         }
 
-        current = next;
+        current = AllUniques {
+            current: next.into_iter(),
+            n: i + 1,
+        };
     }
 
-    current
+    current.collect()
 }
 
 pub fn enumerate(opts: &EnumerateOpts) {
@@ -437,9 +487,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
     let cubes_len = match (opts.mode, opts.no_parallelism) {
         (EnumerationMode::Standard, true) => {
             let cubes = unique_expansions(
-                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
-                    NaivePolyCube::unique_expansions(bar, current)
-                },
+                NaivePolyCube::unique_expansions,
                 cache,
                 n,
                 opts.cache_compression,
@@ -449,17 +497,18 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::Standard, false) => {
-            let cubes = unique_expansions(
-                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
-                    NaivePolyCube::unique_expansions_rayon(bar, current)
-                },
-                cache,
-                n,
-                opts.cache_compression,
-                seed_list,
-                startn,
-            );
-            cubes.len()
+            todo!()
+            // let cubes = unique_expansions(
+            //     |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
+            //         NaivePolyCube::unique_expansions_rayon(bar, current)
+            //     },
+            //     cache,
+            //     n,
+            //     opts.cache_compression,
+            //     seed_list,
+            //     startn,
+            // );
+            // cubes.len()
         }
         (EnumerationMode::RotationReduced, para) => {
             if n > 16 {

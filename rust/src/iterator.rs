@@ -13,6 +13,8 @@ where
     /// that all cubes returned by this iterator are in a form that can be
     /// used directly to check for uniqueness.
     fn is_canonical(&self) -> bool;
+
+    fn n_hint(&self) -> Option<usize>;
 }
 
 /// A trait for converting a [`PolycubeIterator`] into a [`UniquePolycubeIterator`].
@@ -37,7 +39,12 @@ impl<T> IntoUniquePolycubeIterator for T where T: PolycubeIterator {}
 pub trait AllPolycubeIterator: PolycubeIterator {
     /// The size of the polycubes returned by this
     /// iterator.
-    fn n(&self) -> usize;
+    fn n(&self) -> usize {
+        let n_hint = self.n_hint();
+        assert!(n_hint.is_some());
+        // SAFETY: we asserted that n_hint is some
+        unsafe { n_hint.unwrap_unchecked() }
+    }
 }
 
 /// An iterator over unique polycubes.
@@ -97,6 +104,10 @@ impl<T> PolycubeIterator for UniquePolycubes<T>
 where
     T: PolycubeIterator<Item = RawPCube>,
 {
+    fn n_hint(&self) -> Option<usize> {
+        self.inner.n_hint()
+    }
+
     fn is_canonical(&self) -> bool {
         let is_canonical = self.inner.is_canonical();
         assert!(is_canonical);
@@ -116,3 +127,63 @@ where
 }
 
 impl<T> AllUniquePolycubeIterator for UniquePolycubes<T> where T: AllPolycubeIterator {}
+
+// TODO: hide this behind a feature?
+pub mod indicatif {
+    use indicatif::{ProgressBar, ProgressIterator};
+
+    use super::{
+        AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
+    };
+
+    pub struct PolycubeProgressBarIter<T> {
+        inner: indicatif::ProgressBarIter<T>,
+        is_canonical: bool,
+        n_hint: Option<usize>,
+    }
+
+    impl<T> PolycubeProgressBarIter<T>
+    where
+        T: PolycubeIterator,
+    {
+        pub fn new(bar: ProgressBar, inner: T) -> Self {
+            let is_canonical = inner.is_canonical();
+            let n_hint = inner.n_hint();
+
+            Self {
+                inner: inner.progress_with(bar),
+                is_canonical,
+                n_hint,
+            }
+        }
+    }
+
+    impl<T> Iterator for PolycubeProgressBarIter<T>
+    where
+        T: Iterator,
+    {
+        type Item = T::Item;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.inner.next()
+        }
+    }
+
+    impl<T> PolycubeIterator for PolycubeProgressBarIter<T>
+    where
+        T: PolycubeIterator,
+    {
+        fn is_canonical(&self) -> bool {
+            self.is_canonical
+        }
+
+        fn n_hint(&self) -> Option<usize> {
+            self.n_hint
+        }
+    }
+
+    impl<T> ExactSizeIterator for PolycubeProgressBarIter<T> where T: ExactSizeIterator {}
+    impl<T> AllPolycubeIterator for PolycubeProgressBarIter<T> where T: AllPolycubeIterator {}
+    impl<T> UniquePolycubeIterator for PolycubeProgressBarIter<T> where T: UniquePolycubeIterator {}
+    impl<T> AllUniquePolycubeIterator for PolycubeProgressBarIter<T> where T: AllUniquePolycubeIterator {}
+}

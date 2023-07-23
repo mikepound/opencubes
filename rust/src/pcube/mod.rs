@@ -314,6 +314,10 @@ where
     fn is_canonical(&self) -> bool {
         self.inner.canonical()
     }
+
+    fn n_hint(&self) -> Option<usize> {
+        None
+    }
 }
 
 struct AllUnique<T>
@@ -376,6 +380,10 @@ where
 {
     fn is_canonical(&self) -> bool {
         self.canonical
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        Some(self.n())
     }
 }
 

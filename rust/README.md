@@ -72,4 +72,4 @@ Ryzen 9 7900X
 ## To Do
 - profile and optimise further
 
-- folding@home home style cluster support
+- folding@home home style cluster :)

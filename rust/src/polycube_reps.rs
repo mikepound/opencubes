@@ -1,6 +1,6 @@
 use std::cmp::{max, min};
 
-use opencubes::pcube::RawPCube;
+use crate::pcube::RawPCube;
 
 use crate::rotations::{map_coord, to_min_rot_points, MatrixCol::*};
 

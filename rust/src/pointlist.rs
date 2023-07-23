@@ -1,15 +1,13 @@
 use std::{cmp::max, time::Instant};
 
 use crate::{
-    make_bar,
     polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
-    Compression,
 };
 
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
-use opencubes::pcube::{PCubeFile, RawPCube};
+use crate::pcube::RawPCube;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
@@ -246,7 +244,7 @@ fn expand_cube_set(
     seeds: &MapStore,
     count: usize,
     dst: &mut MapStore,
-    bar: &mut ProgressBar,
+    bar: &ProgressBar,
     parallel: bool,
 ) {
     // set up the dst sets before starting parallel processing so accessing doesnt block a global mutex
@@ -260,13 +258,11 @@ fn expand_cube_set(
         }
     }
 
-    let bar = RwLock::new(bar);
-    bar.write()
-        .set_message(format!("seed subsets expanded for N = {}...", count + 1));
+    bar.set_message(format!("seed subsets expanded for N = {}...", count + 1));
 
     let inner_exp = |(ss, body)| {
         expand_cube_sub_set(ss, body, count, dst);
-        bar.write().inc(1);
+        bar.inc(1);
     };
 
     //use parallel iterator or not to run expand_cube_set
@@ -323,7 +319,7 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
 }
 
 /// distructively move the data from hashset to vector
-fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
+fn _clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
     let mut v = Vec::new();
 
     for ((_, head), body) in maps.iter() {
@@ -346,11 +342,11 @@ fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
 /// run pointlist based generation algorithm
 pub fn gen_polycubes(
     n: usize,
-    use_cache: bool,
-    compression: Compression,
+    _use_cache: bool,
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
+    bar: &ProgressBar
 ) -> Vec<CubeMapPos<16>> {
     let t1_start = Instant::now();
 
@@ -369,28 +365,27 @@ pub fn gen_polycubes(
     drop(current);
 
     for i in calculate_from..=n as usize {
-        let mut bar = make_bar(seeds.len() as u64);
         bar.set_message(format!("seed subsets expanded for N = {}...", i));
         let mut dst = MapStore::new();
-        expand_cube_set(&mut seeds, i - 1, &mut dst, &mut bar, parallel);
+        expand_cube_set(&mut seeds, i - 1, &mut dst, bar, parallel);
         seeds = dst;
 
-        if use_cache && i < n {
-            let next = clone_polycubes_to_vec(&mut seeds);
-            let name = &format!("cubes_{i}.pcube");
-            if !std::fs::File::open(name).is_ok() {
-                println!("Saving {} cubes to cache file", next.len());
-                PCubeFile::write_file(
-                    false,
-                    compression.into(),
-                    next.iter().map(|v| v.into()),
-                    name,
-                )
-                .unwrap();
-            } else {
-                println!("Cache file already exists for N = {i}. Not overwriting.");
-            }
-        }
+        // if use_cache && i < n {
+        //     let next = clone_polycubes_to_vec(&mut seeds);
+        //     let name = &format!("cubes_{i}.pcube");
+        //     // if !std::fs::File::open(name).is_ok() {
+        //     //     println!("Saving {} cubes to cache file", next.len());
+        //     //     PCubeFile::write_file(
+        //     //         false,
+        //     //         compression.into(),
+        //     //         next.iter().map(|v| v.into()),
+        //     //         name,
+        //     //     )
+        //     //     .unwrap();
+        //     // } else {
+        //     //     println!("Cache file already exists for N = {i}. Not overwriting.");
+        //     // }
+        // }
 
         let t1_stop = Instant::now();
         let time = t1_stop.duration_since(t1_start).as_micros();
@@ -405,21 +400,21 @@ pub fn gen_polycubes(
     }
     // exported eperately for memory concerns. already quite a lot more probably but not much I can do
     let next = move_polycubes_to_vec(&mut seeds);
-    if use_cache {
-        let name = &format!("cubes_{n}.pcube");
-        if !std::fs::File::open(name).is_ok() {
-            println!("Saving {} cubes to cache file", next.len());
-            PCubeFile::write_file(
-                false,
-                compression.into(),
-                next.iter().map(|v| v.into()),
-                name,
-            )
-            .unwrap();
-        } else {
-            println!("Cache file already exists for N = {n}. Not overwriting.");
-        }
-    }
+    // if use_cache {
+    //     let name = &format!("cubes_{n}.pcube");
+    //     if !std::fs::File::open(name).is_ok() {
+    //         println!("Saving {} cubes to cache file", next.len());
+    //         PCubeFile::write_file(
+    //             false,
+    //             compression.into(),
+    //             next.iter().map(|v| v.into()),
+    //             name,
+    //         )
+    //         .unwrap();
+    //     } else {
+    //         println!("Cache file already exists for N = {n}. Not overwriting.");
+    //     }
+    // }
     next
     //count_polycubes(&seeds);
 }

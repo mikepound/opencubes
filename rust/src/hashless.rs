@@ -1,22 +1,23 @@
 use std::{cmp::max, time::Instant};
 
 use hashbrown::HashSet;
-use opencubes::pcube::RawPCube;
+use indicatif::ProgressBar;
+use crate::pcube::RawPCube;
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    make_bar,
     pointlist::{array_insert, array_shift},
     polycube_reps::{CubeMapPos, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
-    Compression,
 };
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
 fn insert_map(store: &mut HashSet<CubeMapPos<32>>, dim: &Dim, map: &CubeMapPos<32>, count: usize) {
-    let map = to_min_rot_points(map, dim, count);
-    store.insert(map);
+    if !store.contains(map) {
+        let map = to_min_rot_points(map, dim, count);
+        store.insert(map);
+    }
 }
 
 /// try expaning each cube into both x+1 and x-1, calculating new dimension
@@ -208,16 +209,15 @@ fn enumerate_canonical_children(seed: &CubeMapPos<32>, count: usize, target: usi
 /// run pointlist based generation algorithm
 pub fn gen_polycubes(
     n: usize,
-    _use_cache: bool,
-    _compression: Compression,
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
+    bar: &ProgressBar
 ) -> usize {
     let t1_start = Instant::now();
 
     let seed_count = current.len();
-    let bar = make_bar(seed_count as u64);
+    bar.set_length(seed_count as u64);
     bar.set_message(format!(
         "seed subsets expanded for N = {}...",
         calculate_from - 1

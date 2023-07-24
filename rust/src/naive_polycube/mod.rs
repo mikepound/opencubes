@@ -600,23 +600,10 @@ impl NaivePolyCube {
 
         let next_n = from_set.n() + 1;
 
-        let available_parallelism = num_cpus::get();
-
-        let chunk_size = (from_set.len() / available_parallelism) + 1;
-        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
-
-        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
-            from_set
-                .clone()
-                .skip(v * chunk_size)
-                .take(chunk_size)
-                .into_iter()
-        });
-
         let this_level = RwLock::new(HashSet::new());
 
-        chunk_iterator.for_each(|v| {
-            for expansion in Self::expansions(v.map(NaivePolyCube::from)).map(|v| v.crop()) {
+        from_set.par_bridge().for_each(|v| {
+            for expansion in NaivePolyCube::from(v).expand().map(|v| v.crop()) {
                 // Skip expansions that are already in the list.
                 if this_level.read().contains(&expansion) {
                     continue;

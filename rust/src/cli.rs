@@ -545,7 +545,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 println!("n > 16 not supported for point-list");
                 return;
             }
-            let startn = seed_list.n();
+            let startn = seed_list.n() + 1;
             let cubes = pointlist::gen_polycubes(
                 n,
                 cache,
@@ -557,7 +557,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::Hashless, not_parallel) => {
-            let startn = seed_list.n();
+            let startn = seed_list.n() + 1;
             hashless::gen_polycubes(n, !not_parallel, seed_list.collect(), startn, &bar)
         }
     };

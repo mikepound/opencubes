@@ -136,12 +136,9 @@ pub mod indicatif {
         AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
     };
 
-    #[derive(Clone)]
     pub struct PolycubeProgressBarIter<T> {
         bar: ProgressBar,
         inner: T,
-        is_canonical: bool,
-        n_hint: Option<usize>,
     }
 
     impl<T> PolycubeProgressBarIter<T>
@@ -149,15 +146,7 @@ pub mod indicatif {
         T: PolycubeIterator,
     {
         pub fn new(bar: ProgressBar, inner: T) -> Self {
-            let is_canonical = inner.is_canonical();
-            let n_hint = inner.n_hint();
-
-            Self {
-                inner,
-                bar,
-                is_canonical,
-                n_hint,
-            }
+            Self { inner, bar }
         }
     }
 
@@ -182,11 +171,11 @@ pub mod indicatif {
         T: PolycubeIterator,
     {
         fn is_canonical(&self) -> bool {
-            self.is_canonical
+            self.inner.is_canonical()
         }
 
         fn n_hint(&self) -> Option<usize> {
-            self.n_hint
+            self.inner.n_hint()
         }
     }
 

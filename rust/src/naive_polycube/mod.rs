@@ -594,7 +594,7 @@ impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
     pub fn unique_expansions_rayon<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: AllUniquePolycubeIterator + ExactSizeIterator + Clone + Send + Sync + 'static,
+        I: AllUniquePolycubeIterator + ExactSizeIterator + Send + Sync + 'static,
     {
         use rayon::prelude::*;
 

@@ -414,11 +414,30 @@ impl AllPolycubeIterator for AllUniques {}
 impl UniquePolycubeIterator for AllUniques {}
 impl AllUniquePolycubeIterator for AllUniques {}
 
+fn save_to_cache(
+    bar: &ProgressBar,
+    compression: Compression,
+    n: usize,
+    // Ideally, this would be `AllUniquePolycubeIterator` but it's
+    // a bit unwieldy
+    cubes: impl Iterator<Item = RawPCube> + ExactSizeIterator,
+) {
+    let name = &format!("cubes_{n}.pcube");
+    if !std::fs::File::open(name).is_ok() {
+        bar.println(format!("Saving {} cubes to cache file", cubes.len()));
+        PCubeFile::write_file(false, compression.into(), cubes, name).unwrap();
+    } else {
+        bar.println(format!(
+            "Cache file already exists for N = {n}. Not overwriting."
+        ));
+    }
+}
+
 fn unique_expansions(
     use_cache: bool,
     n: usize,
     compression: Compression,
-    current: impl AllPolycubeIterator,
+    current: impl AllUniquePolycubeIterator,
     parallel: bool,
 ) -> Vec<RawPCube> {
     if n == 0 {
@@ -458,21 +477,7 @@ fn unique_expansions(
         bar.finish();
 
         if use_cache {
-            let name = &format!("cubes_{i}.pcube");
-            if !std::fs::File::open(name).is_ok() {
-                bar.println(format!("Saving {} cubes to cache file", next.len()));
-                PCubeFile::write_file(
-                    false,
-                    compression.into(),
-                    next.iter().map(Clone::clone),
-                    name,
-                )
-                .unwrap();
-            } else {
-                bar.println(format!(
-                    "Cache file already exists for N = {i}. Not overwriting."
-                ));
-            }
+            save_to_cache(&bar, compression, i + 1, next.iter().map(Clone::clone));
         }
 
         i += 1;

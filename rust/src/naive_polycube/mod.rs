@@ -14,6 +14,40 @@ use crate::{
 mod expander;
 mod rotations;
 
+struct AllUniques {
+    uniques: std::collections::hash_set::IntoIter<NaivePolyCube>,
+    n: usize,
+    is_canonical: bool,
+}
+
+impl Iterator for AllUniques {
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.uniques.next().map(|v| RawPCube::from(v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.uniques.size_hint()
+    }
+}
+
+impl PolycubeIterator for AllUniques {
+    fn is_canonical(&self) -> bool {
+        self.is_canonical
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        Some(self.n)
+    }
+}
+
+impl FusedIterator for AllUniques {}
+impl ExactSizeIterator for AllUniques {}
+impl UniquePolycubeIterator for AllUniques {}
+impl AllPolycubeIterator for AllUniques {}
+impl AllUniquePolycubeIterator for AllUniques {}
+
 /// A polycube, represented as three dimensions and an array of booleans.
 ///
 /// The array of booleans represents the cubes and their presence (if `true`)
@@ -433,40 +467,6 @@ impl NaivePolyCube {
             uniques.insert(max);
         });
 
-        struct AllUniques {
-            uniques: std::collections::hash_set::IntoIter<NaivePolyCube>,
-            n: usize,
-            is_canonical: bool,
-        }
-
-        impl Iterator for AllUniques {
-            type Item = RawPCube;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                self.uniques.next().map(|v| RawPCube::from(v))
-            }
-
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                self.uniques.size_hint()
-            }
-        }
-
-        impl PolycubeIterator for AllUniques {
-            fn is_canonical(&self) -> bool {
-                self.is_canonical
-            }
-
-            fn n_hint(&self) -> Option<usize> {
-                Some(self.n)
-            }
-        }
-
-        impl FusedIterator for AllUniques {}
-        impl ExactSizeIterator for AllUniques {}
-        impl UniquePolycubeIterator for AllUniques {}
-        impl AllPolycubeIterator for AllUniques {}
-        impl AllUniquePolycubeIterator for AllUniques {}
-
         AllUniques {
             uniques: uniques.into_iter(),
             n: out_n,
@@ -598,82 +598,44 @@ impl NaivePolyCube {
     {
         use rayon::prelude::*;
 
-        let (tx, rx) = crossbeam_channel::bounded(1024);
         let next_n = from_set.n() + 1;
 
-        std::thread::spawn(move || {
-            if from_set.len() == 0 {
-                return;
-            }
+        let available_parallelism = num_cpus::get();
 
-            let available_parallelism = num_cpus::get();
+        let chunk_size = (from_set.len() / available_parallelism) + 1;
+        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
 
-            let chunk_size = (from_set.len() / available_parallelism) + 1;
-            let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
-
-            let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
-                from_set
-                    .clone()
-                    .skip(v * chunk_size)
-                    .take(chunk_size)
-                    .into_iter()
-            });
-
-            let this_level = RwLock::new(HashSet::new());
-
-            chunk_iterator.for_each(|v| {
-                for value in v {
-                    for expansion in NaivePolyCube::from(value).expand().map(|v| v.crop()) {
-                        // Skip expansions that are already in the list.
-                        if this_level.read().contains(&expansion) {
-                            continue;
-                        }
-
-                        let max = expansion.canonical_form();
-
-                        let missing = !this_level.read().contains(&max);
-
-                        if missing {
-                            if this_level.write().insert(max.clone()) {
-                                tx.send(RawPCube::from(max)).unwrap();
-                            }
-                        }
-                    }
-                }
-            });
+        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
+            from_set
+                .clone()
+                .skip(v * chunk_size)
+                .take(chunk_size)
+                .into_iter()
         });
 
-        struct AllUniques {
-            inner: crossbeam_channel::IntoIter<RawPCube>,
-            n_hint: Option<usize>,
-        }
+        let this_level = RwLock::new(HashSet::new());
 
-        impl Iterator for AllUniques {
-            type Item = RawPCube;
+        chunk_iterator.for_each(|v| {
+            for expansion in Self::expansions(v.map(NaivePolyCube::from)).map(|v| v.crop()) {
+                // Skip expansions that are already in the list.
+                if this_level.read().contains(&expansion) {
+                    continue;
+                }
 
-            fn next(&mut self) -> Option<Self::Item> {
-                self.inner.next()
+                let max = expansion.canonical_form();
+
+                let missing = !this_level.read().contains(&max);
+
+                if missing {
+                    this_level.write().insert(max);
+                }
             }
-        }
-
-        impl PolycubeIterator for AllUniques {
-            fn is_canonical(&self) -> bool {
-                false
-            }
-
-            fn n_hint(&self) -> Option<usize> {
-                self.n_hint
-            }
-        }
-
-        impl FusedIterator for AllUniques {}
-        impl UniquePolycubeIterator for AllUniques {}
-        impl AllPolycubeIterator for AllUniques {}
-        impl AllUniquePolycubeIterator for AllUniques {}
+        });
 
         AllUniques {
-            inner: rx.into_iter(),
-            n_hint: Some(next_n),
+            uniques: this_level.into_inner().into_iter(),
+            n: next_n,
+            is_canonical: false,
         }
     }
 }

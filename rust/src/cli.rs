@@ -414,17 +414,13 @@ impl AllPolycubeIterator for AllUniques {}
 impl UniquePolycubeIterator for AllUniques {}
 impl AllUniquePolycubeIterator for AllUniques {}
 
-fn unique_expansions<F, O>(
-    expansion_fn: F,
+fn unique_expansions(
     use_cache: bool,
     n: usize,
     compression: Compression,
     current: impl AllPolycubeIterator,
-) -> Vec<RawPCube>
-where
-    F: Fn(PolycubeProgressBarIter<AllUniques>) -> O,
-    O: AllUniquePolycubeIterator,
-{
+    parallel: bool,
+) -> Vec<RawPCube> {
     if n == 0 {
         return Vec::new();
     }
@@ -446,7 +442,11 @@ where
         let start = Instant::now();
 
         let with_bar = PolycubeProgressBarIter::new(bar.clone(), current);
-        let next: Vec<RawPCube> = expansion_fn(with_bar).collect();
+        let next: Vec<RawPCube> = if parallel {
+            NaivePolyCube::unique_expansions_rayon(with_bar).collect()
+        } else {
+            NaivePolyCube::unique_expansions(with_bar).collect()
+        };
 
         bar.set_message(format!(
             "Found {} unique expansions (N = {}) in {} ms.",
@@ -510,24 +510,9 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {
-        (EnumerationMode::Standard, true) => {
-            let cubes = unique_expansions(
-                NaivePolyCube::unique_expansions,
-                cache,
-                n,
-                opts.cache_compression,
-                seed_list,
-            );
-            cubes.len()
-        }
-        (EnumerationMode::Standard, false) => {
-            let cubes = unique_expansions(
-                NaivePolyCube::unique_expansions_rayon,
-                cache,
-                n,
-                opts.cache_compression,
-                seed_list,
-            );
+        (EnumerationMode::Standard, no_parallelism) => {
+            let cubes =
+                unique_expansions(cache, n, opts.cache_compression, seed_list, !no_parallelism);
             cubes.len()
         }
         (EnumerationMode::RotationReduced, not_parallel) => {

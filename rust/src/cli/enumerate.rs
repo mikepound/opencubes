@@ -78,58 +78,58 @@ fn load_cache_file(n: usize) -> Option<PCubeFile> {
     }
 }
 
+enum CacheOrbase {
+    Cache(opencubes::pcube::AllUnique),
+    Base(bool),
+}
+
+impl Iterator for CacheOrbase {
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            CacheOrbase::Cache(cache) => cache.next(),
+            CacheOrbase::Base(v) if v == &false => {
+                *v = true;
+                let mut base = RawPCube::new_empty(1, 1, 1);
+                base.set(0, 0, 0, true);
+                Some(base)
+            }
+            CacheOrbase::Base(_) => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            CacheOrbase::Cache(c) => c.size_hint(),
+            CacheOrbase::Base(_) => (1, Some(1)),
+        }
+    }
+}
+
+impl PolycubeIterator for CacheOrbase {
+    fn is_canonical(&self) -> bool {
+        match self {
+            CacheOrbase::Cache(c) => c.is_canonical(),
+            CacheOrbase::Base(_) => true,
+        }
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        match self {
+            CacheOrbase::Cache(c) => Some(c.n()),
+            CacheOrbase::Base(_) => Some(1),
+        }
+    }
+}
+
+impl UniquePolycubeIterator for CacheOrbase {}
+impl AllPolycubeIterator for CacheOrbase {}
+impl AllUniquePolycubeIterator for CacheOrbase {}
+
 /// load largest findable cachefile with size <= n - 1 into a vec
 /// returns a vec and the next order above the found cache file
-fn load_cache(n: usize) -> impl AllUniquePolycubeIterator {
-    enum CacheOrbase {
-        Cache(opencubes::pcube::AllUnique),
-        Base(bool),
-    }
-
-    impl Iterator for CacheOrbase {
-        type Item = RawPCube;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            match self {
-                CacheOrbase::Cache(cache) => cache.next(),
-                CacheOrbase::Base(v) if v == &false => {
-                    *v = true;
-                    let mut base = RawPCube::new_empty(1, 1, 1);
-                    base.set(0, 0, 0, true);
-                    Some(base)
-                }
-                CacheOrbase::Base(_) => None,
-            }
-        }
-
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            match self {
-                CacheOrbase::Cache(c) => c.size_hint(),
-                CacheOrbase::Base(_) => (1, Some(1)),
-            }
-        }
-    }
-
-    impl PolycubeIterator for CacheOrbase {
-        fn is_canonical(&self) -> bool {
-            match self {
-                CacheOrbase::Cache(c) => c.is_canonical(),
-                CacheOrbase::Base(_) => true,
-            }
-        }
-
-        fn n_hint(&self) -> Option<usize> {
-            match self {
-                CacheOrbase::Cache(c) => Some(c.n()),
-                CacheOrbase::Base(_) => Some(1),
-            }
-        }
-    }
-
-    impl UniquePolycubeIterator for CacheOrbase {}
-    impl AllPolycubeIterator for CacheOrbase {}
-    impl AllUniquePolycubeIterator for CacheOrbase {}
-
+fn load_cache(n: usize) -> CacheOrbase {
     let calculate_from = 2;
 
     for n in (calculate_from..n).rev() {
@@ -152,7 +152,7 @@ fn load_cache(n: usize) -> impl AllUniquePolycubeIterator {
 }
 
 fn unique_expansions(
-    use_cache: bool,
+    save_cache: bool,
     n: usize,
     compression: Compression,
     current: impl AllUniquePolycubeIterator,
@@ -195,7 +195,7 @@ fn unique_expansions(
 
         bar.finish();
 
-        if use_cache {
+        if save_cache {
             save_to_cache(compression, i + 1, next.iter().map(Clone::clone));
         }
 
@@ -219,7 +219,11 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let start = Instant::now();
 
-    let seed_list = load_cache(n);
+    let seed_list = if opts.no_cache {
+        CacheOrbase::Base(false)
+    } else {
+        load_cache(n)
+    };
 
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {

@@ -8,15 +8,12 @@ use std::{
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use opencubes::{
+    hashless,
     naive_polycube::NaivePolyCube,
     pcube::{PCubeFile, RawPCube},
+    pointlist, rotation_reduced,
 };
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-
-mod pointlist;
-mod polycube_reps;
-mod rotation_reduced;
-mod rotations;
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
@@ -53,7 +50,7 @@ pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     let pos_width = format!("{len}").len();
 
     let template =
-        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}");
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} remaining: [{{eta_precise}}] {{msg}}");
 
     bar.set_style(
         ProgressStyle::with_template(&template)
@@ -98,6 +95,7 @@ pub enum EnumerationMode {
     Standard,
     RotationReduced,
     PointList,
+    Hashless,
 }
 
 #[derive(Clone, Subcommand)]
@@ -364,6 +362,7 @@ fn unique_expansions<F>(
     compression: Compression,
     current: Vec<RawPCube>,
     calculate_from: usize,
+    bar: &ProgressBar,
 ) -> Vec<NaivePolyCube>
 where
     F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
@@ -379,7 +378,7 @@ where
         .collect::<Vec<_>>();
 
     for i in calculate_from..=n {
-        let bar = make_bar(current.len() as u64);
+        bar.set_length(current.len() as u64);
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
         let start = Instant::now();
@@ -432,6 +431,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
         //calculate from 2 because 1 is in the vec
         (current, 2)
     };
+    let bar = make_bar(seed_list.len() as u64);
 
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {
@@ -445,6 +445,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 opts.cache_compression,
                 seed_list,
                 startn,
+                &bar,
             );
             cubes.len()
         }
@@ -458,6 +459,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 opts.cache_compression,
                 seed_list,
                 startn,
+                &bar,
             );
             cubes.len()
         }
@@ -469,22 +471,18 @@ pub fn enumerate(opts: &EnumerateOpts) {
             if !para {
                 println!("no parallel implementation for rotation-reduced, running single threaded")
             }
-            rotation_reduced::gen_polycubes(n)
+            rotation_reduced::gen_polycubes(n, &bar)
         }
         (EnumerationMode::PointList, para) => {
             if n > 16 {
                 println!("n > 16 not supported for point-list");
                 return;
             }
-            let cubes = pointlist::gen_polycubes(
-                n,
-                cache,
-                opts.cache_compression,
-                !para,
-                seed_list,
-                startn,
-            );
+            let cubes = pointlist::gen_polycubes(n, cache, !para, seed_list, startn, &bar);
             cubes.len()
+        }
+        (EnumerationMode::Hashless, para) => {
+            hashless::gen_polycubes(n, !para, seed_list, startn, &bar)
         }
     };
 

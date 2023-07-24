@@ -47,7 +47,7 @@ Commands:
 
 - Times are measured with a large sample set of 1 run in an environment with many background processes of varying resource intensiveness throughout and rounded to 3 sig figs
 
-- No cache files used.
+- No cache files used (hashless uses N=12).
 
 - Working with Low% speedrun rules - more cubes is always better no matter the time,
 a faster time is better than a slower time if cube count is equal.
@@ -67,12 +67,9 @@ Ryzen 9 7900X
 | afa90ad | 0.184ms | 1.43ms | 11.4ms | 8.41ms | 0.686s | 6.58s | 62.45s | 574s | OoM | OoM | OoM | OoM | rotation-reduced |
 | 68090de | 13.2ms | 20.4ms | 37.4ms | 85.3ms | 0.304s | 1.74s | 14.2s | 124s | OoM | OoM | OoM | OoM | point-list + rayon |
 | b83f9c6 | 3ms | 4.3ms | 8.58ms | 25.4ms | 0.137s | 0.986s | 8.02s | 66.7s | OoM | OoM | OoM | OoM | point-list + rayon |
+| 88bca6b | NA | NA | NA | NA | NA | NA | NA | 1m28 | 12m55 | 1h50 | 16h10 | NA | hashless + rayon |
 
 ## To Do
-- implement hashtableless solution that just enumerates
-
 - profile and optimise further
 
-- deduplicate mirrors as well to reduce (optimistically) ~50% memory usage in the
-hashset and then test for symatry when counting unique variants
-
+- folding@home home style cluster :)

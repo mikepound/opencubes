@@ -438,7 +438,8 @@ where
         n: calculate_from,
     };
 
-    for i in calculate_from..=n {
+    let mut i = calculate_from;
+    loop {
         let bar = make_bar(current.len() as u64);
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
@@ -448,8 +449,9 @@ where
         let next: Vec<RawPCube> = expansion_fn(with_bar).collect();
 
         bar.set_message(format!(
-            "Found {} unique expansions (N = {i}) in {} ms.",
+            "Found {} unique expansions (N = {}) in {} ms.",
             next.len(),
+            i + 1,
             start.elapsed().as_millis(),
         ));
 
@@ -473,14 +475,18 @@ where
             }
         }
 
-        current = AllUniques {
-            current: Arc::new(next),
-            offset: 0,
-            n: i + 1,
-        };
-    }
+        i += 1;
 
-    Arc::into_inner(current.current).unwrap()
+        if i == n {
+            return next;
+        } else {
+            current = AllUniques {
+                current: Arc::new(next),
+                offset: 0,
+                n: i + 1,
+            };
+        }
+    }
 }
 
 pub fn enumerate(opts: &EnumerateOpts) {

@@ -24,6 +24,8 @@ fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
         .unwrap()
         .tick_strings(&[
+            ">---------",
+            ">---------",
             "=>--------",
             "<=>-------",
             "-<=>------",
@@ -34,16 +36,16 @@ fn unknown_bar() -> ProgressBar {
             "------<=>-",
             "-------<=>",
             "--------<=",
+            "---------<",
+            "--------<=",
             "-------<=>",
             "------<=>-",
-            "----<=>---",
             "-----<=>--",
             "---<=>----",
             "--<=>-----",
             "-<=>------",
             "<=>-------",
             "=>--------",
-            "----------",
         ]);
 
     let bar = ProgressBar::new(100).with_style(style);

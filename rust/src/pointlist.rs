@@ -1,15 +1,13 @@
 use std::{cmp::max, time::Instant};
 
 use crate::{
-    make_bar,
     polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
-    Compression,
 };
 
+use crate::pcube::RawPCube;
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
-use opencubes::pcube::{PCubeFile, RawPCube};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
@@ -23,10 +21,10 @@ type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
-fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
+fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
     let map = to_min_rot_points(map, dim, count);
     let mut body = CubeMapPosPart { cubes: [0; 15] };
-    for i in 1..16 {
+    for i in 1..count {
         body.cubes[i - 1] = map.cubes[i];
     }
     match store.get(&(*dim, map.cubes[0])) {
@@ -44,7 +42,7 @@ fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos, count: usize) {
 
 ///linearly scan backwards to insertion point overwrites end of slice
 #[inline]
-fn array_insert(val: u16, arr: &mut [u16]) {
+pub fn array_insert(val: u16, arr: &mut [u16]) {
     for i in 1..(arr.len()) {
         if arr[arr.len() - 1 - i] > val {
             arr[arr.len() - i] = arr[arr.len() - 1 - i];
@@ -58,7 +56,7 @@ fn array_insert(val: u16, arr: &mut [u16]) {
 
 /// moves contents of slice to index x+1, x==0 remains
 #[inline]
-fn array_shift(arr: &mut [u16]) {
+pub fn array_shift(arr: &mut [u16]) {
     for i in 1..(arr.len()) {
         arr[arr.len() - i] = arr[arr.len() - 1 - i];
     }
@@ -67,7 +65,7 @@ fn array_shift(arr: &mut [u16]) {
 /// try expaning each cube into both x+1 and x-1, calculating new dimension
 /// and ensuring x is never negative
 #[inline]
-fn expand_xs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_xs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + 1)) {
             let mut new_shape = *shape;
@@ -102,7 +100,7 @@ fn expand_xs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// try expaning each cube into both y+1 and y-1, calculating new dimension
 /// and ensuring y is never negative
 #[inline]
-fn expand_ys(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_ys(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 5))) {
             let mut new_shape = *shape;
@@ -136,7 +134,7 @@ fn expand_ys(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// try expaning each cube into both z+1 and z-1, calculating new dimension
 /// and ensuring z is never negative
 #[inline]
-fn expand_zs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_zs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     for (i, coord) in seed.cubes[0..count].iter().enumerate() {
         if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 10))) {
             let mut new_shape = *shape;
@@ -170,7 +168,7 @@ fn expand_zs(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
 /// reduce number of expansions needing to be performed based on
 /// X >= Y >= Z constraint on Dim
 #[inline]
-fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     if shape.y < shape.x {
         expand_ys(dst, seed, shape, count);
     }
@@ -184,7 +182,7 @@ fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usiz
 /// if perform extra expansions for cases where the dimensions are equal as
 /// square sides may miss poly cubes otherwise
 #[inline]
-fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos, shape: &Dim, count: usize) {
+fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
     if shape.x == shape.y && shape.x > 0 {
         let rotz = rot_matrix_points(
             seed,
@@ -246,7 +244,7 @@ fn expand_cube_set(
     seeds: &MapStore,
     count: usize,
     dst: &mut MapStore,
-    bar: &mut ProgressBar,
+    bar: &ProgressBar,
     parallel: bool,
 ) {
     // set up the dst sets before starting parallel processing so accessing doesnt block a global mutex
@@ -260,13 +258,11 @@ fn expand_cube_set(
         }
     }
 
-    let bar = RwLock::new(bar);
-    bar.write()
-        .set_message(format!("seed subsets expanded for N = {}...", count + 1));
+    bar.set_message(format!("seed subsets expanded for N = {}...", count + 1));
 
     let inner_exp = |(ss, body)| {
         expand_cube_sub_set(ss, body, count, dst);
-        bar.write().inc(1);
+        bar.inc(1);
     };
 
     //use parallel iterator or not to run expand_cube_set
@@ -300,13 +296,13 @@ fn count_polycubes(maps: &MapStore) -> usize {
 }
 
 /// distructively move the data from hashset to vector
-fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
+fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
     let mut v = Vec::new();
     while let Some(((dim, head), body)) = maps.iter().next() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
             let bod = body.read();
-            let mut cmp = CubeMapPos { cubes: [0; 16] };
+            let mut cmp = CubeMapPos::new();
             cmp.cubes[0] = *head;
             for b in bod.iter() {
                 for i in 0..15 {
@@ -323,14 +319,14 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
 }
 
 /// distructively move the data from hashset to vector
-fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
+fn _clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
     let mut v = Vec::new();
 
     for ((_, head), body) in maps.iter() {
         //extra scope to free lock and make borrow checker allow mutation of maps
         {
             let bod = body.read();
-            let mut cmp = CubeMapPos { cubes: [0; 16] };
+            let mut cmp = CubeMapPos::new();
             cmp.cubes[0] = *head;
             for b in bod.iter() {
                 for i in 0..15 {
@@ -346,18 +342,18 @@ fn clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos> {
 /// run pointlist based generation algorithm
 pub fn gen_polycubes(
     n: usize,
-    use_cache: bool,
-    compression: Compression,
+    _use_cache: bool,
     parallel: bool,
     current: Vec<RawPCube>,
     calculate_from: usize,
-) -> Vec<CubeMapPos> {
+    bar: &ProgressBar,
+) -> Vec<CubeMapPos<16>> {
     let t1_start = Instant::now();
 
     //convert input vector of NaivePolyCubes and convert them to
     let mut seeds = MapStore::new();
     for seed in current.iter() {
-        let seed: CubeMapPos = seed.into();
+        let seed: CubeMapPos<16> = seed.into();
         let dim = seed.extrapolate_dim();
         if !seeds.contains_key(&(dim, seed.cubes[0])) {
             for i in 0..(dim.y * 32 + dim.x + 1) {
@@ -369,28 +365,27 @@ pub fn gen_polycubes(
     drop(current);
 
     for i in calculate_from..=n as usize {
-        let mut bar = make_bar(seeds.len() as u64);
         bar.set_message(format!("seed subsets expanded for N = {}...", i));
         let mut dst = MapStore::new();
-        expand_cube_set(&mut seeds, i - 1, &mut dst, &mut bar, parallel);
+        expand_cube_set(&mut seeds, i - 1, &mut dst, bar, parallel);
         seeds = dst;
 
-        if use_cache && i < n {
-            let next = clone_polycubes_to_vec(&mut seeds);
-            let name = &format!("cubes_{i}.pcube");
-            if !std::fs::File::open(name).is_ok() {
-                println!("Saving {} cubes to cache file", next.len());
-                PCubeFile::write_file(
-                    false,
-                    compression.into(),
-                    next.iter().map(|v| v.into()),
-                    name,
-                )
-                .unwrap();
-            } else {
-                println!("Cache file already exists for N = {i}. Not overwriting.");
-            }
-        }
+        // if use_cache && i < n {
+        //     let next = clone_polycubes_to_vec(&mut seeds);
+        //     let name = &format!("cubes_{i}.pcube");
+        //     // if !std::fs::File::open(name).is_ok() {
+        //     //     println!("Saving {} cubes to cache file", next.len());
+        //     //     PCubeFile::write_file(
+        //     //         false,
+        //     //         compression.into(),
+        //     //         next.iter().map(|v| v.into()),
+        //     //         name,
+        //     //     )
+        //     //     .unwrap();
+        //     // } else {
+        //     //     println!("Cache file already exists for N = {i}. Not overwriting.");
+        //     // }
+        // }
 
         let t1_stop = Instant::now();
         let time = t1_stop.duration_since(t1_start).as_micros();
@@ -405,21 +400,21 @@ pub fn gen_polycubes(
     }
     // exported eperately for memory concerns. already quite a lot more probably but not much I can do
     let next = move_polycubes_to_vec(&mut seeds);
-    if use_cache {
-        let name = &format!("cubes_{n}.pcube");
-        if !std::fs::File::open(name).is_ok() {
-            println!("Saving {} cubes to cache file", next.len());
-            PCubeFile::write_file(
-                false,
-                compression.into(),
-                next.iter().map(|v| v.into()),
-                name,
-            )
-            .unwrap();
-        } else {
-            println!("Cache file already exists for N = {n}. Not overwriting.");
-        }
-    }
+    // if use_cache {
+    //     let name = &format!("cubes_{n}.pcube");
+    //     if !std::fs::File::open(name).is_ok() {
+    //         println!("Saving {} cubes to cache file", next.len());
+    //         PCubeFile::write_file(
+    //             false,
+    //             compression.into(),
+    //             next.iter().map(|v| v.into()),
+    //             name,
+    //         )
+    //         .unwrap();
+    //     } else {
+    //         println!("Cache file already exists for N = {n}. Not overwriting.");
+    //     }
+    // }
     next
     //count_polycubes(&seeds);
 }

@@ -6,7 +6,6 @@ use std::{cmp::max, collections::HashSet, time::Instant};
 use indicatif::ProgressBar;
 
 use crate::{
-    make_bar,
     polycube_reps::CubeMap,
     rotations::{self, rot_matrix, MatrixCol},
 };
@@ -445,7 +444,7 @@ fn expand_cube_set(
     in_set: &HashSet<CubeEncoding>,
     #[cfg(feature = "diagnostics")] depth: usize,
     out_set: &mut HashSet<CubeEncoding>,
-    bar: &mut ProgressBar,
+    bar: &ProgressBar,
 ) {
     let mut i = 0;
     for map in in_set.iter() {
@@ -487,7 +486,7 @@ fn expand_cube_set(
     }
 }
 
-pub fn gen_polycubes(n: usize) -> usize {
+pub fn gen_polycubes(n: usize, bar: &ProgressBar) -> usize {
     let unit_cube = CubeMap {
         x: 1,
         y: 0,
@@ -507,14 +506,13 @@ pub fn gen_polycubes(n: usize) -> usize {
         2,
     );
     for i in 3..=n as usize {
-        let mut bar = make_bar(seeds.len() as u64);
         bar.set_message(format!("seed subsets expanded for N = {}...", i));
         expand_cube_set(
             &seeds,
             #[cfg(feature = "diagnostics")]
             i,
             &mut dst,
-            &mut bar,
+            bar,
         );
         //if diagnostics enabled panic if the returned values are wrong
         #[cfg(feature = "diagnostics")]

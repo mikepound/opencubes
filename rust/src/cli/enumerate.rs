@@ -1,6 +1,5 @@
 use std::{io::ErrorKind, sync::Arc, time::Instant};
 
-use ::indicatif::ProgressBar;
 use opencubes::{
     hashless,
     iterator::{indicatif::PolycubeProgressBarIter, *},
@@ -50,7 +49,6 @@ impl UniquePolycubeIterator for AllUniques {}
 impl AllUniquePolycubeIterator for AllUniques {}
 
 fn save_to_cache(
-    bar: &ProgressBar,
     compression: Compression,
     n: usize,
     // Ideally, this would be `AllUniquePolycubeIterator` but it's
@@ -59,12 +57,10 @@ fn save_to_cache(
 ) {
     let name = &format!("cubes_{n}.pcube");
     if !std::fs::File::open(name).is_ok() {
-        bar.println(format!("Saving {} cubes to cache file", cubes.len()));
+        println!("Saving {} cubes to cache file", cubes.len());
         PCubeFile::write_file(false, compression.into(), cubes, name).unwrap();
     } else {
-        bar.println(format!(
-            "Cache file already exists for N = {n}. Not overwriting."
-        ));
+        println!("Cache file already exists for N = {n}. Not overwriting.");
     }
 }
 
@@ -149,7 +145,7 @@ fn load_cache(n: usize) -> impl AllUniquePolycubeIterator {
 
     println!(
         "No cache file found for size <= {}. Starting from N = 1",
-        n - 1
+        n.saturating_sub(1)
     );
 
     CacheOrbase::Base(false)
@@ -176,6 +172,7 @@ fn unique_expansions(
     };
 
     let mut i = calculate_from;
+
     loop {
         let bar = make_bar(current.len() as u64);
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
@@ -199,12 +196,12 @@ fn unique_expansions(
         bar.finish();
 
         if use_cache {
-            save_to_cache(&bar, compression, i + 1, next.iter().map(Clone::clone));
+            save_to_cache(compression, i + 1, next.iter().map(Clone::clone));
         }
 
         i += 1;
 
-        if i == n {
+        if n.saturating_sub(i) == 0 {
             return next;
         } else {
             current = AllUniques {
@@ -219,11 +216,6 @@ fn unique_expansions(
 pub fn enumerate(opts: &EnumerateOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
-
-    if n < 2 {
-        println!("n < 2 unsuported");
-        return;
-    }
 
     let start = Instant::now();
 

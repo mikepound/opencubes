@@ -165,7 +165,7 @@ where
     }
 
     /// This is by no means guaranteed, but makes life a bit easier
-    pub fn assume_all_unique(self) -> impl AllUniquePolycubeIterator {
+    pub fn assume_all_unique(self) -> AllUnique<T> {
         AllUnique::new(self)
     }
 }
@@ -320,7 +320,7 @@ where
     }
 }
 
-struct AllUnique<T>
+pub struct AllUnique<T = File>
 where
     T: Read,
 {

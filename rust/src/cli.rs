@@ -46,7 +46,11 @@ fn unknown_bar() -> ProgressBar {
             "----------",
         ]);
 
-    ProgressBar::new(100).with_style(style)
+    let bar = ProgressBar::new(100).with_style(style);
+
+    bar.enable_steady_tick(Duration::from_millis(66));
+
+    bar
 }
 
 pub fn make_bar(len: u64) -> indicatif::ProgressBar {
@@ -293,71 +297,83 @@ fn load_cache_file(n: usize) -> Option<PCubeFile> {
         Err(e) => {
             if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
                 println!("Enountered invalid cache file {name}. Error: {e}.");
-            } else {
-                println!("Could not load cache file '{name}'. Error: {e}");
             }
             None
         }
     }
 }
 
-/// load closes cache file to n into a vec
+/// load largest findable cachefile with size <= n - 1 into a vec
 /// returns a vec and the next order above the found cache file
-fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
+fn load_cache(n: usize) -> impl AllUniquePolycubeIterator {
+    enum CacheOrbase {
+        Cache(opencubes::pcube::AllUnique),
+        Base(bool),
+    }
+
+    impl Iterator for CacheOrbase {
+        type Item = RawPCube;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            match self {
+                CacheOrbase::Cache(cache) => cache.next(),
+                CacheOrbase::Base(v) if v == &false => {
+                    *v = true;
+                    let mut base = RawPCube::new_empty(1, 1, 1);
+                    base.set(0, 0, 0, true);
+                    Some(base)
+                }
+                CacheOrbase::Base(_) => None,
+            }
+        }
+
+        fn size_hint(&self) -> (usize, Option<usize>) {
+            match self {
+                CacheOrbase::Cache(c) => c.size_hint(),
+                CacheOrbase::Base(_) => (1, Some(1)),
+            }
+        }
+    }
+
+    impl PolycubeIterator for CacheOrbase {
+        fn is_canonical(&self) -> bool {
+            match self {
+                CacheOrbase::Cache(c) => c.is_canonical(),
+                CacheOrbase::Base(_) => true,
+            }
+        }
+
+        fn n_hint(&self) -> Option<usize> {
+            match self {
+                CacheOrbase::Cache(c) => Some(c.n()),
+                CacheOrbase::Base(_) => Some(1),
+            }
+        }
+    }
+
+    impl UniquePolycubeIterator for CacheOrbase {}
+    impl AllPolycubeIterator for CacheOrbase {}
+    impl AllUniquePolycubeIterator for CacheOrbase {}
+
     let calculate_from = 2;
 
     for n in (calculate_from..n).rev() {
-        let name = format!("cubes_{n}.pcube");
         let cache = if let Some(file) = load_cache_file(n) {
             file
         } else {
             continue;
         };
 
-        println!("Found cache for N = {n}. Loading data...");
-
-        if !cache.canonical() {
-            println!("Cached cubes are not canonical. Canonicalizing...")
-        }
-
-        let len = cache.len();
-
-        let mut error = None;
-        let mut total_loaded = 0;
-
-        let filter = |value| {
-            total_loaded += 1;
-            match value {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error = Some(e);
-                    None
-                }
-            }
-        };
-
-        let cached: HashSet<_> = cache.filter_map(filter).collect();
-
-        if let Some(e) = error {
-            println!("Error occured while loading {name}. Error: {e}");
-        } else {
-            let total_len = len.unwrap_or(total_loaded);
-
-            if total_len != cached.len() {
-                println!("There were non-unique cubes in the cache file. Continuing...")
-            }
-
-            return (cached.into_iter().collect(), n + 1);
-        }
+        println!("Found cache for N = {n}.");
+        return CacheOrbase::Cache(cache.assume_all_unique());
     }
 
-    println!("no cache file found reverting to start building from n=1");
-    let mut base = RawPCube::new_empty(1, 1, 1);
-    base.set(0, 0, 0, true);
+    println!(
+        "No cache file found for size <= {}. Starting from N = 1",
+        n - 1
+    );
 
-    let current = [base.clone()].to_vec();
-    //calculate from 2 because 1 is in the vec
-    (current, 2)
+    CacheOrbase::Base(false)
 }
 
 #[derive(Clone)]
@@ -403,8 +419,7 @@ fn unique_expansions<F, O>(
     use_cache: bool,
     n: usize,
     compression: Compression,
-    current: Vec<RawPCube>,
-    calculate_from: usize,
+    current: impl AllPolycubeIterator,
 ) -> Vec<RawPCube>
 where
     F: Fn(PolycubeProgressBarIter<AllUniques>) -> O,
@@ -413,6 +428,9 @@ where
     if n == 0 {
         return Vec::new();
     }
+
+    let calculate_from = current.n();
+    let current = current.collect();
 
     let mut current = AllUniques {
         current: Arc::new(current),
@@ -440,7 +458,7 @@ where
         if use_cache {
             let name = &format!("cubes_{i}.pcube");
             if !std::fs::File::open(name).is_ok() {
-                println!("Saving {} cubes to cache file", next.len());
+                bar.println(format!("Saving {} cubes to cache file", next.len()));
                 PCubeFile::write_file(
                     false,
                     compression.into(),
@@ -449,7 +467,9 @@ where
                 )
                 .unwrap();
             } else {
-                println!("Cache file already exists for N = {i}. Not overwriting.");
+                bar.println(format!(
+                    "Cache file already exists for N = {i}. Not overwriting."
+                ));
             }
         }
 
@@ -460,7 +480,7 @@ where
         };
     }
 
-    current.collect()
+    Arc::into_inner(current.current).unwrap()
 }
 
 pub fn enumerate(opts: &EnumerateOpts) {
@@ -474,17 +494,13 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let start = Instant::now();
 
-    let (seed_list, startn) = if cache {
-        load_cache(n)
-    } else {
-        let mut base = RawPCube::new_empty(1, 1, 1);
-        base.set(0, 0, 0, true);
+    let seed_list = load_cache(n);
 
-        let current = [base].to_vec();
-        //calculate from 2 because 1 is in the vec
-        (current, 2)
+    let bar = if let (_, Some(max)) = seed_list.size_hint() {
+        make_bar(max as u64)
+    } else {
+        unknown_bar()
     };
-    let bar = make_bar(seed_list.len() as u64);
 
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {
@@ -495,7 +511,6 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 n,
                 opts.cache_compression,
                 seed_list,
-                startn,
             );
             cubes.len()
         }
@@ -506,30 +521,38 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 n,
                 opts.cache_compression,
                 seed_list,
-                startn,
             );
             cubes.len()
         }
-        (EnumerationMode::RotationReduced, para) => {
+        (EnumerationMode::RotationReduced, not_parallel) => {
             if n > 16 {
                 println!("n > 16 not supported for rotation reduced");
                 return;
             }
-            if !para {
+            if !not_parallel {
                 println!("no parallel implementation for rotation-reduced, running single threaded")
             }
             rotation_reduced::gen_polycubes(n, &bar)
         }
-        (EnumerationMode::PointList, para) => {
+        (EnumerationMode::PointList, not_parallel) => {
             if n > 16 {
                 println!("n > 16 not supported for point-list");
                 return;
             }
-            let cubes = pointlist::gen_polycubes(n, cache, !para, seed_list, startn, &bar);
+            let startn = seed_list.n();
+            let cubes = pointlist::gen_polycubes(
+                n,
+                cache,
+                !not_parallel,
+                seed_list.collect(),
+                startn,
+                &bar,
+            );
             cubes.len()
         }
-        (EnumerationMode::Hashless, para) => {
-            hashless::gen_polycubes(n, !para, seed_list, startn, &bar)
+        (EnumerationMode::Hashless, not_parallel) => {
+            let startn = seed_list.n();
+            hashless::gen_polycubes(n, !not_parallel, seed_list.collect(), startn, &bar)
         }
     };
 

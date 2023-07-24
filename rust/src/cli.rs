@@ -457,7 +457,8 @@ fn unique_expansions(
 
     let mut i = calculate_from;
     loop {
-        let bar = make_bar(current.len() as u64);
+        // let bar = make_bar(current.len() as u64);
+        let bar = unknown_bar();
         bar.set_message(format!("base polycubes expanded for N = {i}..."));
 
         let start = Instant::now();
@@ -509,12 +510,6 @@ pub fn enumerate(opts: &EnumerateOpts) {
 
     let seed_list = load_cache(n);
 
-    let bar = if let (_, Some(max)) = seed_list.size_hint() {
-        make_bar(max as u64)
-    } else {
-        unknown_bar()
-    };
-
     //Select enumeration function to run
     let cubes_len = match (opts.mode, opts.no_parallelism) {
         (EnumerationMode::Standard, no_parallelism) => {
@@ -530,6 +525,12 @@ pub fn enumerate(opts: &EnumerateOpts) {
             if !not_parallel {
                 println!("no parallel implementation for rotation-reduced, running single threaded")
             }
+            let bar = if let (_, Some(max)) = seed_list.size_hint() {
+                make_bar(max as u64)
+            } else {
+                unknown_bar()
+            };
+
             rotation_reduced::gen_polycubes(n, &bar)
         }
         (EnumerationMode::PointList, not_parallel) => {
@@ -537,6 +538,12 @@ pub fn enumerate(opts: &EnumerateOpts) {
                 println!("n > 16 not supported for point-list");
                 return;
             }
+            let bar = if let (_, Some(max)) = seed_list.size_hint() {
+                make_bar(max as u64)
+            } else {
+                unknown_bar()
+            };
+
             let startn = seed_list.n() + 1;
             let cubes = pointlist::gen_polycubes(
                 n,
@@ -550,6 +557,12 @@ pub fn enumerate(opts: &EnumerateOpts) {
         }
         (EnumerationMode::Hashless, not_parallel) => {
             let startn = seed_list.n() + 1;
+            let bar = if let (_, Some(max)) = seed_list.size_hint() {
+                make_bar(max as u64)
+            } else {
+                unknown_bar()
+            };
+
             hashless::gen_polycubes(n, !not_parallel, seed_list.collect(), startn, &bar)
         }
     };

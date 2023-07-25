@@ -131,10 +131,14 @@ impl<const N: usize> HashlessCubeMap<N> {
     ) -> usize {
         let mut map = Self::new();
         let shape = seed.extrapolate_dim();
-        map.expand_cube_map(seed, &shape, count);
+
+        let seed = to_min_rot_points(seed, &shape, count);
+        let shape = seed.extrapolate_dim();
+
+        map.expand_cube_map(&seed, &shape, count);
 
         map.inner
-            .retain(|child| child.is_canonical_root(count, seed));
+            .retain(|child| child.is_canonical_root(count, &seed));
 
         if count + 1 == target {
             map.inner.len()

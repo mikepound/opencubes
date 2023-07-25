@@ -12,6 +12,16 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 mod enumerate;
 use enumerate::enumerate;
 
+fn finish_bar(bar: &ProgressBar, duration: Duration, expansions: usize, n: usize) {
+    let time = duration.as_micros();
+    let secs = time / 1_000_000;
+    let micros = time % 1_000_000;
+
+    bar.finish_with_message(format!(
+        "Done! Found {expansions} expansions (N = {n}) in {secs}.{micros} s"
+    ));
+}
+
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
         .unwrap()

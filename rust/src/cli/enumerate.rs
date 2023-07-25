@@ -10,7 +10,7 @@ use opencubes::{
     rotation_reduced,
 };
 
-use crate::{make_bar, unknown_bar, Compression, EnumerateOpts, EnumerationMode};
+use crate::{finish_bar, make_bar, unknown_bar, Compression, EnumerateOpts, EnumerationMode};
 
 use rayon::{iter::ParallelBridge, prelude::ParallelIterator};
 
@@ -190,14 +190,7 @@ fn unique_expansions(
             NaivePolyCube::unique_expansions(with_bar).collect()
         };
 
-        bar.set_message(format!(
-            "Found {} unique expansions (N = {}) in {} ms.",
-            next.len(),
-            i + 1,
-            start.elapsed().as_millis(),
-        ));
-
-        bar.finish();
+        finish_bar(&bar, start.elapsed(), next.len(), i + 1);
 
         if save_cache {
             save_to_cache(compression, i + 1, next.iter().map(Clone::clone));

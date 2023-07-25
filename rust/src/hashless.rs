@@ -15,6 +15,61 @@ pub struct HashlessCubeMap<const N: usize> {
     inner: HashSet<CubeMapPos<N>>,
 }
 
+macro_rules! define_expand_fn {
+    ($name:ident, $shift:literal, $dim:ident, $dim_str:literal) => {
+        /// Try expanding each cube into
+        #[doc = $dim_str]
+        /// plus one and
+        #[doc = $dim_str]
+        /// minus one , calculating new dimension and ensuring
+        #[doc = $dim_str]
+        /// is never negative
+        #[inline(always)]
+        fn $name(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
+            for (i, coord) in seed.cubes[0..count].iter().enumerate() {
+                let plus = coord + (1 << $shift);
+                let minus = coord - (1 << $shift);
+
+                // Check if we can insert a new cube at $dim + 1
+                if !seed.cubes[(i + 1)..count].contains(&plus) {
+                    let mut new_shape = *shape;
+                    let mut exp_map = *seed;
+
+                    array_insert(plus, &mut exp_map.cubes[i..=count]);
+                    new_shape.$dim = max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
+                    self.insert_map(&new_shape, &exp_map, count + 1)
+                }
+
+                let mut new_map = *seed;
+                let mut new_shape = *shape;
+
+                // If the coord is out of bounds for $dim, shift everything
+                // over and insert a new cube at the out-of-bounds position.
+                // If it is in bounds, check if the $dim - 1 value is already
+                // set.
+                // NOTE(datdenkikniet): ^^ I deduced this. Is it correct?
+                let insert_coord = if (coord >> $shift) & 0x1f != 0 {
+                    if !seed.cubes[0..i].contains(&minus) {
+                        minus
+                    } else {
+                        continue;
+                    }
+                } else {
+                    new_shape.$dim += 1;
+                    for i in 0..count {
+                        new_map.cubes[i] += 1 << $shift;
+                    }
+                    *coord
+                };
+
+                array_shift(&mut new_map.cubes[i..=count]);
+                array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+                self.insert_map(&new_shape, &new_map, count + 1)
+            }
+        }
+    };
+}
+
 impl<const N: usize> HashlessCubeMap<N> {
     pub fn new() -> Self {
         Self {
@@ -22,124 +77,16 @@ impl<const N: usize> HashlessCubeMap<N> {
         }
     }
 
+    define_expand_fn!(expand_xs, 0, x, "x");
+    define_expand_fn!(expand_ys, 5, y, "y");
+    define_expand_fn!(expand_zs, 10, z, "z");
+
     /// helper function to not duplicate code for canonicalising polycubes
     /// and storing them in the hashset
     fn insert_map(&mut self, dim: &Dim, map: &CubeMapPos<N>, count: usize) {
         if !self.inner.contains(map) {
             let map = to_min_rot_points(map, dim, count);
             self.inner.insert(map);
-        }
-    }
-
-    /// try expaning each cube into both x+1 and x-1, calculating new dimension
-    /// and ensuring x is never negative
-    #[inline]
-    fn expand_xs(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-        for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-            if !seed.cubes[(i + 1)..count].contains(&(coord + 1)) {
-                let mut new_shape = *shape;
-                let mut exp_map = *seed;
-
-                array_insert(coord + 1, &mut exp_map.cubes[i..=count]);
-                new_shape.x = max(new_shape.x, ((coord + 1) & 0x1f) as usize);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
-
-            if coord & 0x1f != 0 {
-                if !seed.cubes[0..i].contains(&(coord - 1)) {
-                    let mut exp_map = *seed;
-                    //faster move of top half hopefully
-                    array_shift(&mut exp_map.cubes[i..=count]);
-                    array_insert(coord - 1, &mut exp_map.cubes[0..=i]);
-                    self.insert_map(shape, &exp_map, count + 1)
-                }
-            } else {
-                let mut new_shape = *shape;
-                new_shape.x += 1;
-                let mut exp_map = *seed;
-                for i in 0..count {
-                    exp_map.cubes[i] += 1;
-                }
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(*coord, &mut exp_map.cubes[0..=i]);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
-        }
-    }
-
-    /// Try expanding each cube into both y+1 and y-1, calculating new dimension
-    /// and ensuring y is never negative
-    #[inline]
-    fn expand_ys(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-        for (i, coord) in seed.cubes[..count].iter().enumerate() {
-            let y_plus = coord + (1 << 5);
-            let y_minus = coord - (1 << 5);
-
-            let mut new_map = *seed;
-            let mut new_shape = *shape;
-
-            if !seed.cubes[(i + 1)..count].contains(&y_plus) {
-                let mut new_shape = *shape;
-                let mut exp_map = *seed;
-                array_insert(y_plus, &mut exp_map.cubes[i..=count]);
-                new_shape.y = max(new_shape.y, (((coord >> 5) + 1) & 0x1f) as usize);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
-
-            // Determine the new shape and the coordinate at which the next cube
-            // will be inserted.
-            let insert_coord = if (coord >> 5) & 0x1f != 0 {
-                if !seed.cubes[0..i].contains(&y_minus) {
-                    y_minus
-                } else {
-                    continue;
-                }
-            } else {
-                new_shape.y += 1;
-                for i in 0..count {
-                    new_map.cubes[i] += 1 << 5;
-                }
-                *coord
-            };
-
-            array_shift(&mut new_map.cubes[i..=count]);
-            array_insert(insert_coord, &mut new_map.cubes[0..=i]);
-            self.insert_map(&new_shape, &new_map, count + 1)
-        }
-    }
-
-    /// try expaning each cube into both z+1 and z-1, calculating new dimension
-    /// and ensuring z is never negative
-    #[inline]
-    fn expand_zs(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-        for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-            if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 10))) {
-                let mut new_shape = *shape;
-                let mut exp_map = *seed;
-                array_insert(coord + (1 << 10), &mut exp_map.cubes[i..=count]);
-                new_shape.z = max(new_shape.z, (((coord >> 10) + 1) & 0x1f) as usize);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
-
-            if (coord >> 10) & 0x1f != 0 {
-                if !seed.cubes[0..i].contains(&(coord - (1 << 10))) {
-                    let mut exp_map = *seed;
-                    //faster move of top half hopefully
-                    array_shift(&mut exp_map.cubes[i..=count]);
-                    array_insert(coord - (1 << 10), &mut exp_map.cubes[0..=i]);
-                    self.insert_map(shape, &exp_map, count + 1)
-                }
-            } else {
-                let mut new_shape = *shape;
-                new_shape.z += 1;
-                let mut exp_map = *seed;
-                for i in 0..count {
-                    exp_map.cubes[i] += 1 << 10;
-                }
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(*coord, &mut exp_map.cubes[0..=i]);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
         }
     }
 

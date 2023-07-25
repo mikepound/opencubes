@@ -17,6 +17,20 @@ fn finish_bar(bar: &ProgressBar, duration: Duration, expansions: usize, n: usize
     let secs = time / 1_000_000;
     let micros = time % 1_000_000;
 
+    if let Some(len) = bar.length() {
+        let pos_width = format!("{}", len).len();
+
+        let template = format!(
+            "[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
+        );
+
+        bar.set_style(
+            ProgressStyle::with_template(&template)
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+    }
+
     bar.finish_with_message(format!(
         "Done! Found {expansions} expansions (N = {n}) in {secs}.{micros} s"
     ));
@@ -62,7 +76,7 @@ pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     let pos_width = format!("{len}").len();
 
     let template =
-        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} remaining: [{{eta_precise}}] {{msg}}");
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}} remaining: [{{eta_precise}}]");
 
     bar.set_style(
         ProgressStyle::with_template(&template)

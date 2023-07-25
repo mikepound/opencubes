@@ -67,37 +67,44 @@ impl<const N: usize> HashlessCubeMap<N> {
         }
     }
 
-    /// try expaning each cube into both y+1 and y-1, calculating new dimension
+    /// Try expanding each cube into both y+1 and y-1, calculating new dimension
     /// and ensuring y is never negative
     #[inline]
     fn expand_ys(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-        for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-            if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 5))) {
+        for (i, coord) in seed.cubes[..count].iter().enumerate() {
+            let y_plus = coord + (1 << 5);
+            let y_minus = coord - (1 << 5);
+
+            let mut new_map = *seed;
+            let mut new_shape = *shape;
+
+            if !seed.cubes[(i + 1)..count].contains(&y_plus) {
                 let mut new_shape = *shape;
                 let mut exp_map = *seed;
-                array_insert(coord + (1 << 5), &mut exp_map.cubes[i..=count]);
+                array_insert(y_plus, &mut exp_map.cubes[i..=count]);
                 new_shape.y = max(new_shape.y, (((coord >> 5) + 1) & 0x1f) as usize);
                 self.insert_map(&new_shape, &exp_map, count + 1)
             }
-            if (coord >> 5) & 0x1f != 0 {
-                if !seed.cubes[0..i].contains(&(coord - (1 << 5))) {
-                    let mut exp_map = *seed;
-                    //faster move of top half hopefully
-                    array_shift(&mut exp_map.cubes[i..=count]);
-                    array_insert(coord - (1 << 5), &mut exp_map.cubes[0..=i]);
-                    self.insert_map(shape, &exp_map, count + 1)
+
+            // Determine the new shape and the coordinate at which the next cube
+            // will be inserted.
+            let insert_coord = if (coord >> 5) & 0x1f != 0 {
+                if !seed.cubes[0..i].contains(&y_minus) {
+                    y_minus
+                } else {
+                    continue;
                 }
             } else {
-                let mut new_shape = *shape;
                 new_shape.y += 1;
-                let mut exp_map = *seed;
                 for i in 0..count {
-                    exp_map.cubes[i] += 1 << 5;
+                    new_map.cubes[i] += 1 << 5;
                 }
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(*coord, &mut exp_map.cubes[0..=i]);
-                self.insert_map(&new_shape, &exp_map, count + 1)
-            }
+                *coord
+            };
+
+            array_shift(&mut new_map.cubes[i..=count]);
+            array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+            self.insert_map(&new_shape, &new_map, count + 1)
         }
     }
 

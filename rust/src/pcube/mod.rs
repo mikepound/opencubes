@@ -41,7 +41,7 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         if let Some(len) = self.len {
-            (0, Some(len))
+            (len, Some(len))
         } else {
             (0, None)
         }

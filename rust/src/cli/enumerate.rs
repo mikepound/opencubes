@@ -232,7 +232,7 @@ pub fn enumerate_hashless(
         unknown_bar()
     };
 
-    bar.set_message(format!("seed subsets expanded for N = {}...", start_n - 1,));
+    bar.set_message(format!("Expanding seeds of N = {}...", start_n));
 
     let process = |seed: RawPCube| {
         let seed: CubeMapPos<32> = seed.into();

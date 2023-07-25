@@ -1,14 +1,18 @@
 use std::{io::ErrorKind, sync::Arc, time::Instant};
 
 use opencubes::{
-    hashless,
+    hashless::HashlessCubeMap,
     iterator::{indicatif::PolycubeProgressBarIter, *},
     naive_polycube::NaivePolyCube,
     pcube::{PCubeFile, RawPCube},
-    pointlist, rotation_reduced,
+    pointlist,
+    polycube_reps::CubeMapPos,
+    rotation_reduced,
 };
 
 use crate::{make_bar, unknown_bar, Compression, EnumerateOpts, EnumerationMode};
+
+use rayon::{iter::ParallelBridge, prelude::ParallelIterator};
 
 #[derive(Clone)]
 struct AllUniques {
@@ -213,6 +217,49 @@ fn unique_expansions(
     }
 }
 
+/// run pointlist based generation algorithm
+pub fn enumerate_hashless(
+    n: usize,
+    parallel: bool,
+    current: impl AllUniquePolycubeIterator + Send,
+) -> usize {
+    let t1_start = Instant::now();
+
+    let start_n = current.n();
+    let bar = if let (_, Some(max)) = current.size_hint() {
+        make_bar(max as u64)
+    } else {
+        unknown_bar()
+    };
+
+    let process = |seed| {
+        let seed: CubeMapPos<32> = RawPCube::into(seed);
+        let children = HashlessCubeMap::enumerate_canonical_children(&seed, start_n, n);
+        bar.set_message(format!("seed subsets expanded for N = {}...", start_n - 1,));
+        bar.inc(1);
+        children
+    };
+
+    //convert input vector of NaivePolyCubes and convert them to
+    let count: usize = if parallel {
+        current.par_bridge().map(process).sum()
+    } else {
+        current.map(process).sum()
+    };
+
+    let time = t1_start.elapsed().as_micros();
+    bar.set_message(format!(
+        "Found {} unique expansions (N = {n}) in  {}.{:06}s",
+        count,
+        time / 1000000,
+        time % 1000000
+    ));
+
+    bar.finish();
+    count
+    //count_polycubes(&seeds);
+}
+
 pub fn enumerate(opts: &EnumerateOpts) {
     let n = opts.n;
     let cache = !opts.no_cache;
@@ -271,14 +318,7 @@ pub fn enumerate(opts: &EnumerateOpts) {
             cubes.len()
         }
         (EnumerationMode::Hashless, not_parallel) => {
-            let startn = seed_list.n() + 1;
-            let bar = if let (_, Some(max)) = seed_list.size_hint() {
-                make_bar(max as u64)
-            } else {
-                unknown_bar()
-            };
-
-            hashless::gen_polycubes(n, !not_parallel, seed_list.collect(), startn, &bar)
+            enumerate_hashless(n, !not_parallel, seed_list)
         }
     };
 

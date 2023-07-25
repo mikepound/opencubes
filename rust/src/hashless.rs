@@ -1,9 +1,6 @@
-use std::{cmp::max, time::Instant};
+use std::cmp::max;
 
-use crate::pcube::RawPCube;
 use hashbrown::HashSet;
-use indicatif::ProgressBar;
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     pointlist::{array_insert, array_shift},
@@ -127,7 +124,11 @@ impl<const N: usize> HashlessCubeMap<N> {
         self.do_cube_expansion(seed, shape, count);
     }
 
-    fn enumerate_canonical_children(seed: &CubeMapPos<N>, count: usize, target: usize) -> usize {
+    pub fn enumerate_canonical_children(
+        seed: &CubeMapPos<N>,
+        count: usize,
+        target: usize,
+    ) -> usize {
         let mut map = Self::new();
         let shape = seed.extrapolate_dim();
         map.expand_cube_map(seed, &shape, count);
@@ -144,54 +145,4 @@ impl<const N: usize> HashlessCubeMap<N> {
                 .sum()
         }
     }
-}
-
-/// run pointlist based generation algorithm
-pub fn gen_polycubes(
-    n: usize,
-    parallel: bool,
-    current: Vec<RawPCube>,
-    calculate_from: usize,
-    bar: &ProgressBar,
-) -> usize {
-    let t1_start = Instant::now();
-
-    let seed_count = current.len();
-    bar.set_length(seed_count as u64);
-    bar.set_message(format!(
-        "seed subsets expanded for N = {}...",
-        calculate_from - 1
-    ));
-
-    let process = |seed: CubeMapPos<32>| {
-        let children = HashlessCubeMap::enumerate_canonical_children(&seed, calculate_from - 1, n);
-        bar.set_message(format!(
-            "seed subsets expanded for N = {}...",
-            calculate_from - 1,
-        ));
-        bar.inc(1);
-        children
-    };
-
-    //convert input vector of NaivePolyCubes and convert them to
-    let count: usize = if parallel {
-        current
-            .par_iter()
-            .map(|seed| seed.into())
-            .map(process)
-            .sum()
-    } else {
-        current.iter().map(|seed| seed.into()).map(process).sum()
-    };
-    let time = t1_start.elapsed().as_micros();
-    bar.set_message(format!(
-        "Found {} unique expansions (N = {n}) in  {}.{:06}s",
-        count,
-        time / 1000000,
-        time % 1000000
-    ));
-
-    bar.finish();
-    count
-    //count_polycubes(&seeds);
 }

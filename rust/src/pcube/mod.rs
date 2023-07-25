@@ -305,6 +305,10 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|v| v.ok()).flatten()
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
 }
 
 impl<T> PolycubeIterator for IgnoreErrorIter<T>
@@ -371,6 +375,10 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
     }
 }
 

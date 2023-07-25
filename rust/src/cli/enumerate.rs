@@ -179,7 +179,7 @@ fn unique_expansions(
 
     loop {
         let bar = make_bar(current.len() as u64);
-        bar.set_message(format!("base polycubes expanded for N = {i}..."));
+        bar.set_message(format!("Expanding base polycubes of N = {i}..."));
 
         let start = Instant::now();
 
@@ -232,32 +232,24 @@ pub fn enumerate_hashless(
         unknown_bar()
     };
 
-    let process = |seed| {
-        let seed: CubeMapPos<32> = RawPCube::into(seed);
+    bar.set_message(format!("seed subsets expanded for N = {}...", start_n - 1,));
+
+    let process = |seed: RawPCube| {
+        let seed: CubeMapPos<32> = seed.into();
         let children = HashlessCubeMap::enumerate_canonical_children(&seed, start_n, n);
-        bar.set_message(format!("seed subsets expanded for N = {}...", start_n - 1,));
         bar.inc(1);
         children
     };
 
-    //convert input vector of NaivePolyCubes and convert them to
     let count: usize = if parallel {
         current.par_bridge().map(process).sum()
     } else {
         current.map(process).sum()
     };
 
-    let time = t1_start.elapsed().as_micros();
-    bar.set_message(format!(
-        "Found {} unique expansions (N = {n}) in  {}.{:06}s",
-        count,
-        time / 1000000,
-        time % 1000000
-    ));
+    finish_bar(&bar, t1_start.elapsed(), count, n);
 
-    bar.finish();
     count
-    //count_polycubes(&seeds);
 }
 
 pub fn enumerate(opts: &EnumerateOpts) {

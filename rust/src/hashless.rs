@@ -108,41 +108,19 @@ impl<const N: usize> HashlessCubeMap<N> {
     /// square sides may miss poly cubes otherwise
     #[inline]
     fn expand_cube_map(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
+        use MatrixCol::*;
+
         if shape.x == shape.y && shape.x > 0 {
-            let rotz = rot_matrix_points(
-                seed,
-                shape,
-                count,
-                MatrixCol::YN,
-                MatrixCol::XN,
-                MatrixCol::ZN,
-                1025,
-            );
+            let rotz = rot_matrix_points(seed, shape, count, YN, XN, ZN, 1025);
             self.do_cube_expansion(&rotz, shape, count);
         }
 
         if shape.y == shape.z && shape.y > 0 {
-            let rotx = rot_matrix_points(
-                seed,
-                shape,
-                count,
-                MatrixCol::XN,
-                MatrixCol::ZP,
-                MatrixCol::YP,
-                1025,
-            );
+            let rotx = rot_matrix_points(seed, shape, count, XN, ZP, YP, 1025);
             self.do_cube_expansion(&rotx, shape, count);
         }
         if shape.x == shape.z && shape.x > 0 {
-            let roty = rot_matrix_points(
-                seed,
-                shape,
-                count,
-                MatrixCol::ZP,
-                MatrixCol::YP,
-                MatrixCol::XN,
-                1025,
-            );
+            let roty = rot_matrix_points(seed, shape, count, ZP, YP, XN, 1025);
             self.do_cube_expansion(&roty, shape, count);
         }
 

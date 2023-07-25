@@ -452,7 +452,7 @@ impl NaivePolyCube {
     /// items in `from_set`.
     pub fn unique_expansions<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: AllUniquePolycubeIterator,
+        I: AllPolycubeIterator,
     {
         let out_n = from_set.n() + 1;
         let mut uniques = HashSet::new();
@@ -594,7 +594,7 @@ impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
     pub fn unique_expansions_rayon<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: AllUniquePolycubeIterator + ExactSizeIterator + Send + Sync + 'static,
+        I: AllPolycubeIterator + ExactSizeIterator + Send + Sync + 'static,
     {
         use rayon::prelude::*;
 

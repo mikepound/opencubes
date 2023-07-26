@@ -1,7 +1,7 @@
 use std::{io::ErrorKind, sync::Arc, time::Instant};
 
 use opencubes::{
-    hashless::HashlessCubeMap,
+    hashless::MapStore,
     iterator::{indicatif::PolycubeProgressBarIter, *},
     naive_polycube::NaivePolyCube,
     pcube::{PCubeFile, RawPCube},
@@ -229,7 +229,7 @@ pub fn enumerate_hashless(
 
     let process = |seed: RawPCube| {
         let seed: CubeMapPos<32> = seed.into();
-        let children = HashlessCubeMap::enumerate_canonical_children(&seed, start_n, n);
+        let children = MapStore::enumerate_canonical_children(&seed, start_n, n);
         bar.inc(1);
         children
     };

@@ -8,7 +8,7 @@ use crate::{
     rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
 };
 
-pub struct HashlessCubeMap<const N: usize> {
+pub struct MapStore<const N: usize> {
     inner: HashSet<CubeMapPos<N>>,
 }
 
@@ -67,7 +67,7 @@ macro_rules! define_expand_fn {
     };
 }
 
-impl<const N: usize> HashlessCubeMap<N> {
+impl<const N: usize> MapStore<N> {
     pub fn new() -> Self {
         Self {
             inner: HashSet::new(),

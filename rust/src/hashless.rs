@@ -124,7 +124,14 @@ impl<const N: usize> MapStore<N> {
         self.do_cube_expansion(seed, shape, count);
     }
 
-    pub fn enumerate_canonical_children(
+    /// Calculate the amount of canonical children of size `target`
+    /// that polycube `seed` of size `count` has.
+    ///
+    /// This function does not store variants of the polycubes that
+    /// it enumerates, it just keeps the count. This way, memory
+    /// overhead is minimal.
+    // TODO: improve this name once we unify this and pointslist
+    pub fn enumerate_canonical_children_min_mem(
         seed: &CubeMapPos<N>,
         count: usize,
         target: usize,
@@ -145,7 +152,7 @@ impl<const N: usize> MapStore<N> {
         } else {
             map.inner
                 .iter()
-                .map(|child| Self::enumerate_canonical_children(child, count + 1, target))
+                .map(|child| Self::enumerate_canonical_children_min_mem(child, count + 1, target))
                 .sum()
         }
     }

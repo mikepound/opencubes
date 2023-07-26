@@ -229,7 +229,7 @@ pub fn enumerate_hashless(
 
     let process = |seed: RawPCube| {
         let seed: CubeMapPos<32> = seed.into();
-        let children = MapStore::enumerate_canonical_children(&seed, start_n, n);
+        let children = MapStore::enumerate_canonical_children_min_mem(&seed, start_n, n);
         bar.inc(1);
         children
     };

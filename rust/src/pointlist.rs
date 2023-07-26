@@ -1,11 +1,7 @@
 use std::{cmp::max, time::Instant};
 
-use crate::{
-    polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
-    rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
-};
+use crate::polycubes::{point_list::{Dim, CubeMapPos, rotate::{rot_matrix_points, to_min_rot_points}}, pcube::RawPCube, rotation_reduced::rotate::MatrixCol};
 
-use crate::pcube::RawPCube;
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
 use parking_lot::RwLock;
@@ -17,13 +13,13 @@ use rayon::prelude::*;
 /// used for reducing mutex preasure on insertion
 /// used as buckets for parallelising
 /// however both of these give suboptomal performance due to the uneven distribution
-type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
+type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPos<15>>>>;
 
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
 fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
     let map = to_min_rot_points(map, dim, count);
-    let mut body = CubeMapPosPart { cubes: [0; 15] };
+    let mut body = CubeMapPos::new();
     for i in 1..count {
         body.cubes[i - 1] = map.cubes[i];
     }
@@ -225,7 +221,7 @@ fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: us
 /// helper for inner_exp in expand_cube_set it didnt like going directly in the closure
 fn expand_cube_sub_set(
     (shape, start): &(Dim, u16),
-    body: &RwLock<HashSet<CubeMapPosPart>>,
+    body: &RwLock<HashSet<CubeMapPos<15>>>,
     count: usize,
     dst: &MapStore,
 ) {

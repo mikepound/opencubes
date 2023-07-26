@@ -8,7 +8,7 @@ use crate::{
     iterator::{
         AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
     },
-    pcube::RawPCube,
+    polycubes::pcube::RawPCube,
 };
 
 mod expander;

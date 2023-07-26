@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::naive_polycube::NaivePolyCube;
+use crate::polycubes::naive_polycube::NaivePolyCube;
 
 fn test_cube() -> NaivePolyCube {
     let mut cube = NaivePolyCube::new(2, 3, 4);

@@ -6,7 +6,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
+use opencubes::polycubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod enumerate;
@@ -188,11 +188,11 @@ pub enum Compression {
     Gzip,
 }
 
-impl From<Compression> for opencubes::pcube::Compression {
+impl From<Compression> for opencubes::polycubes::pcube::Compression {
     fn from(value: Compression) -> Self {
         match value {
-            Compression::None => opencubes::pcube::Compression::None,
-            Compression::Gzip => opencubes::pcube::Compression::Gzip,
+            Compression::None => opencubes::polycubes::pcube::Compression::None,
+            Compression::Gzip => opencubes::polycubes::pcube::Compression::Gzip,
         }
     }
 }

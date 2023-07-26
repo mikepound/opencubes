@@ -3,9 +3,7 @@ use std::cmp::max;
 use hashbrown::HashSet;
 
 use crate::{
-    pointlist::{array_insert, array_shift},
-    polycube_reps::{CubeMapPos, Dim},
-    rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
+    pointlist::{array_insert, array_shift}, polycubes::{point_list::{CubeMapPos, Dim, rotate::{to_min_rot_points, rot_matrix_points}}, rotation_reduced::rotate::MatrixCol},
 };
 
 pub struct MapStore<const N: usize> {

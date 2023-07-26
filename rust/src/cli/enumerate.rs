@@ -3,11 +3,8 @@ use std::{io::ErrorKind, sync::Arc, time::Instant};
 use opencubes::{
     hashless::MapStore,
     iterator::{indicatif::PolycubeProgressBarIter, *},
-    naive_polycube::NaivePolyCube,
-    pcube::{PCubeFile, RawPCube},
     pointlist,
-    polycube_reps::CubeMapPos,
-    rotation_reduced,
+    rotation_reduced, polycubes::{pcube::{RawPCube, PCubeFile}, naive_polycube::NaivePolyCube, point_list::CubeMapPos},
 };
 
 use crate::{finish_bar, make_bar, unknown_bar, Compression, EnumerateOpts, EnumerationMode};
@@ -83,7 +80,7 @@ fn load_cache_file(n: usize) -> Option<PCubeFile> {
 }
 
 enum CacheOrbase {
-    Cache(opencubes::pcube::AllUnique),
+    Cache(opencubes::polycubes::pcube::AllUnique),
     Base(bool),
 }
 

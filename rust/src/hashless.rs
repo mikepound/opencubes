@@ -12,59 +12,97 @@ pub struct MapStore<const N: usize> {
     inner: HashSet<CubeMapPos<N>>,
 }
 
-macro_rules! define_expand_fn {
-    ($name:ident, $shift:literal, $dim:ident, $dim_str:literal) => {
-        /// Try expanding each cube into
-        #[doc = $dim_str]
-        /// plus one and
-        #[doc = $dim_str]
-        /// minus one , calculating new dimension and ensuring
-        #[doc = $dim_str]
-        /// is never negative
+macro_rules! cube_map_pos_expand {
+    ($name:ident, $dim:ident, $shift:literal) => {
         #[inline(always)]
-        fn $name(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-            for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-                let plus = coord + (1 << $shift);
-                let minus = coord - (1 << $shift);
+        pub fn $name<'a>(
+            &'a self,
+            shape: &'a Dim,
+            count: usize,
+        ) -> impl Iterator<Item = (Dim, usize, Self)> + 'a {
+            struct Iter<'a, const C: usize> {
+                inner: &'a CubeMapPos<C>,
+                shape: &'a Dim,
+                count: usize,
+                i: usize,
+                stored: Option<(Dim, usize, CubeMapPos<C>)>,
+            }
 
-                // Only check if the cube at $dim + 1 already exists at the
-                // coordinates past `coord` (since the list sorted)
-                if !seed.cubes[(i + 1)..count].contains(&plus) {
-                    let mut new_shape = *shape;
-                    let mut exp_map = *seed;
+            impl<'a, const C: usize> Iterator for Iter<'a, C> {
+                type Item = (Dim, usize, CubeMapPos<C>);
 
-                    array_insert(plus, &mut exp_map.cubes[i..=count]);
-                    new_shape.$dim = max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
-                    self.insert_map(&new_shape, &exp_map, count + 1)
+                fn next(&mut self) -> Option<Self::Item> {
+                    loop {
+                        if let Some(stored) = self.stored.take() {
+                            return Some(stored);
+                        }
+
+                        let i = self.i;
+
+                        if i == self.count {
+                            return None;
+                        }
+
+                        self.i += 1;
+                        let coord = *self.inner.cubes.get(i)?;
+
+                        let plus = coord + (1 << $shift);
+                        let minus = coord - (1 << $shift);
+
+                        if !self.inner.cubes[(i + 1)..self.count].contains(&plus) {
+                            let mut new_shape = *self.shape;
+                            let mut new_map = *self.inner;
+
+                            array_insert(plus, &mut new_map.cubes[i..=self.count]);
+                            new_shape.$dim =
+                                max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
+
+                            self.stored = Some((new_shape, self.count + 1, new_map));
+                        }
+
+                        let mut new_map = *self.inner;
+                        let mut new_shape = *self.shape;
+
+                        // If the coord is out of bounds for $dim, shift everything
+                        // over and create the cube at the out-of-bounds position.
+                        // If it is in bounds, check if the $dim - 1 value already
+                        // exists.
+                        let insert_coord = if (coord >> $shift) & 0x1f != 0 {
+                            if !self.inner.cubes[0..i].contains(&minus) {
+                                minus
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            new_shape.$dim += 1;
+                            for i in 0..self.count {
+                                new_map.cubes[i] += 1 << $shift;
+                            }
+                            coord
+                        };
+
+                        array_shift(&mut new_map.cubes[i..=self.count]);
+                        array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+                        return Some((new_shape, self.count + 1, new_map));
+                    }
                 }
+            }
 
-                let mut new_map = *seed;
-                let mut new_shape = *shape;
-
-                // If the coord is out of bounds for $dim, shift everything
-                // over and create the cube at the out-of-bounds position.
-                // If it is in bounds, check if the $dim - 1 value already
-                // exists.
-                let insert_coord = if (coord >> $shift) & 0x1f != 0 {
-                    if !seed.cubes[0..i].contains(&minus) {
-                        minus
-                    } else {
-                        continue;
-                    }
-                } else {
-                    new_shape.$dim += 1;
-                    for i in 0..count {
-                        new_map.cubes[i] += 1 << $shift;
-                    }
-                    *coord
-                };
-
-                array_shift(&mut new_map.cubes[i..=count]);
-                array_insert(insert_coord, &mut new_map.cubes[0..=i]);
-                self.insert_map(&new_shape, &new_map, count + 1)
+            Iter {
+                inner: self,
+                shape,
+                count,
+                i: 0,
+                stored: None,
             }
         }
     };
+}
+
+impl<const N: usize> CubeMapPos<N> {
+    cube_map_pos_expand!(expand_x, x, 0);
+    cube_map_pos_expand!(expand_y, y, 5);
+    cube_map_pos_expand!(expand_z, z, 10);
 }
 
 impl<const N: usize> MapStore<N> {
@@ -73,10 +111,6 @@ impl<const N: usize> MapStore<N> {
             inner: HashSet::new(),
         }
     }
-
-    define_expand_fn!(expand_xs, 0, x, "x");
-    define_expand_fn!(expand_ys, 5, y, "y");
-    define_expand_fn!(expand_zs, 10, z, "z");
 
     /// helper function to not duplicate code for canonicalising polycubes
     /// and storing them in the hashset
@@ -91,13 +125,22 @@ impl<const N: usize> MapStore<N> {
     /// X >= Y >= Z constraint on Dim
     #[inline]
     fn do_cube_expansion(&mut self, seed: &CubeMapPos<N>, shape: &Dim, count: usize) {
-        if shape.y < shape.x {
-            self.expand_ys(seed, shape, count);
-        }
-        if shape.z < shape.y {
-            self.expand_zs(seed, shape, count);
-        }
-        self.expand_xs(seed, shape, count);
+        let expand_ys = if shape.y < shape.x {
+            Some(seed.expand_y(shape, count))
+        } else {
+            None
+        };
+
+        let expand_zs = if shape.z < shape.y {
+            Some(seed.expand_z(shape, count))
+        } else {
+            None
+        };
+
+        seed.expand_x(shape, count)
+            .chain(expand_ys.into_iter().flatten())
+            .chain(expand_zs.into_iter().flatten())
+            .for_each(|(dim, new_count, map)| self.insert_map(&dim, &map, new_count));
     }
 
     /// perform the cube expansion for a given polycube

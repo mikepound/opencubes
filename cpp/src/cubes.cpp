@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <thread>
@@ -153,7 +154,10 @@ struct Worker {
     }
 };
 
-FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache, bool use_split_cache) {
+FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_cache, bool use_split_cache, std::string base_path) {
+    if (!std::filesystem::is_directory(base_path)) {
+        std::filesystem::create_directory(base_path);
+    }
     Hashy hashes;
     if (n < 1)
         return {};
@@ -162,14 +166,14 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         if (write_cache) {
-            Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+            Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
         }
         return FlatCache(hashes, n);
     }
 
     CacheReader cr;
     if (use_cache && !use_split_cache) {
-        std::string cachefile = "cubes_" + std::to_string(n - 1) + ".bin";
+        std::string cachefile = base_path + "cubes_" + std::to_string(n - 1) + ".bin";
         cr.loadFile(cachefile);
         cr.printHeader();
     }
@@ -210,7 +214,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
 
             if (use_split_cache) {
                 // load cache file only for this shape
-                std::string cachefile = "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
+                std::string cachefile = base_path + "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
                                         std::to_string(prevShapes[sid].y()) + "-" + std::to_string(prevShapes[sid].z()) + ".bin";
                 cr.loadFile(cachefile);
                 // cr.printHeader();
@@ -237,7 +241,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         std::printf("  num: %lu\n\r", hashes.byshape[targetShape].size());
         totalSum += hashes.byshape[targetShape].size();
         if (write_cache && split_cache) {
-            Cache::save("cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
+            Cache::save(base_path + "cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
                             std::to_string(targetShape.z()) + ".bin",
                         hashes, n);
         }
@@ -249,7 +253,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         }
     }
     if (write_cache && !split_cache) {
-        Cache::save("cubes_" + std::to_string(n) + ".bin", hashes, n);
+        Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
     }
     auto end = std::chrono::steady_clock::now();
     auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();

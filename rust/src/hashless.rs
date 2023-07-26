@@ -27,7 +27,8 @@ macro_rules! define_expand_fn {
                 let plus = coord + (1 << $shift);
                 let minus = coord - (1 << $shift);
 
-                // Check if we can insert a new cube at $dim + 1
+                // Only check if the cube at $dim + 1 already exists at the
+                // coordinates past `coord` (since the list sorted)
                 if !seed.cubes[(i + 1)..count].contains(&plus) {
                     let mut new_shape = *shape;
                     let mut exp_map = *seed;
@@ -41,10 +42,9 @@ macro_rules! define_expand_fn {
                 let mut new_shape = *shape;
 
                 // If the coord is out of bounds for $dim, shift everything
-                // over and insert a new cube at the out-of-bounds position.
-                // If it is in bounds, check if the $dim - 1 value is already
-                // set.
-                // NOTE(datdenkikniet): ^^ I deduced this. Is it correct?
+                // over and create the cube at the out-of-bounds position.
+                // If it is in bounds, check if the $dim - 1 value already
+                // exists.
                 let insert_coord = if (coord >> $shift) & 0x1f != 0 {
                     if !seed.cubes[0..i].contains(&minus) {
                         minus

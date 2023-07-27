@@ -33,8 +33,12 @@ impl RawPCube {
         (self.dim_1, self.dim_2, self.dim_3)
     }
 
-    pub fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &Vec<u8> {
         &self.data
+    }
+
+    pub fn into_data(self) -> Vec<u8> {
+        self.data
     }
 
     pub fn new(dim_1: u8, dim_2: u8, dim_3: u8, data: Vec<u8>) -> Option<Self> {

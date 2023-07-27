@@ -3,6 +3,7 @@
 use std::{
     fs::File,
     io::{ErrorKind, Read, Seek, Write},
+    iter::Peekable,
     path::Path,
 };
 
@@ -13,6 +14,10 @@ mod compression;
 pub use compression::Compression;
 use compression::{Reader, Writer};
 
+use crate::iterator::{
+    AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
+};
+
 const MAGIC: [u8; 4] = [0xCB, 0xEC, 0xCB, 0xEC];
 
 /// A pcube file.
@@ -22,7 +27,6 @@ pub struct PCubeFile<T = File>
 where
     T: Read,
 {
-    had_error: bool,
     input: Reader<T>,
     len: Option<usize>,
     cubes_read: usize,
@@ -37,39 +41,14 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         if let Some(len) = self.len {
-            (0, Some(len))
+            (len, Some(len))
         } else {
             (0, None)
         }
     }
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.had_error {
-            return None;
-        }
-
-        let next_cube = RawPCube::unpack(&mut self.input);
-
-        let next_cube = match (next_cube, self.len) {
-            (Err(_), None) => return None,
-            (Err(e), Some(expected)) => {
-                if expected == self.cubes_read {
-                    return None;
-                } else {
-                    self.had_error = true;
-                    let msg = format!(
-                        "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
-                        self.cubes_read
-                    );
-                    return Some(Err(std::io::Error::new(ErrorKind::InvalidData, msg)));
-                }
-            }
-            (Ok(c), _) => c,
-        };
-
-        self.cubes_read += 1;
-
-        Some(Ok(next_cube))
+        self.next()
     }
 }
 
@@ -155,8 +134,39 @@ where
             len,
             cubes_read: 0,
             cubes_are_canonical: canonicalized,
-            had_error: false,
         })
+    }
+
+    pub fn next(&mut self) -> Option<std::io::Result<RawPCube>> {
+        let next_cube = RawPCube::unpack(&mut self.input);
+
+        match (next_cube, self.len) {
+            (Ok(c), _) => {
+                self.cubes_read += 1;
+                Some(Ok(c))
+            }
+            (Err(_), None) => return None,
+            (Err(e), Some(expected)) => {
+                if expected == self.cubes_read {
+                    return None;
+                } else {
+                    let msg = format!(
+                        "Expected {expected} cubes, but failed to read after {} cubes. Error: {e}",
+                        self.cubes_read
+                    );
+                    return Some(Err(std::io::Error::new(ErrorKind::InvalidData, msg)));
+                }
+            }
+        }
+    }
+
+    pub fn into_iter(self) -> impl PolycubeIterator {
+        IgnoreErrorIter::new(self)
+    }
+
+    /// This is by no means guaranteed, but makes life a bit easier
+    pub fn assume_all_unique(self) -> AllUnique<T> {
+        AllUnique::new(self)
     }
 }
 
@@ -269,3 +279,131 @@ impl PCubeFile {
         Ok(())
     }
 }
+
+struct IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    inner: PCubeFile<T>,
+}
+
+impl<T> IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    pub fn new(inner: PCubeFile<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> Iterator for IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|v| v.ok()).flatten()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<T> PolycubeIterator for IgnoreErrorIter<T>
+where
+    T: Read,
+{
+    fn is_canonical(&self) -> bool {
+        self.inner.canonical()
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        None
+    }
+}
+
+pub struct AllUnique<T = File>
+where
+    T: Read,
+{
+    n: usize,
+    canonical: bool,
+    inner: Peekable<IgnoreErrorIter<T>>,
+}
+
+impl<T> AllUnique<T>
+where
+    T: Read,
+{
+    pub fn new(inner: PCubeFile<T>) -> Self {
+        let canonical = inner.canonical();
+        let mut peekable = IgnoreErrorIter::new(inner).peekable();
+
+        let n = if let Some(peek) = peekable.peek() {
+            let mut n = 0;
+            let (x, y, z) = peek.dims();
+            for x in 0..x {
+                for y in 0..y {
+                    for z in 0..z {
+                        if peek.get(x, y, z) {
+                            n += 1;
+                        }
+                    }
+                }
+            }
+
+            n
+        } else {
+            0
+        };
+
+        Self {
+            n,
+            canonical,
+            inner: peekable,
+        }
+    }
+}
+
+impl<T> Iterator for AllUnique<T>
+where
+    T: Read,
+{
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<T> PolycubeIterator for AllUnique<T>
+where
+    T: Read,
+{
+    fn is_canonical(&self) -> bool {
+        self.canonical
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        Some(self.n())
+    }
+}
+
+impl<T> UniquePolycubeIterator for AllUnique<T> where T: Read {}
+
+impl<T> AllPolycubeIterator for AllUnique<T>
+where
+    T: Read,
+{
+    fn n(&self) -> usize {
+        self.n
+    }
+}
+
+impl<T> AllUniquePolycubeIterator for AllUnique<T> where T: Read {}

@@ -6,7 +6,7 @@ use super::NaivePolyCube;
 type Sides = std::array::IntoIter<(usize, usize, usize), 6>;
 
 #[derive(Clone)]
-struct ExpansionIterator {
+pub struct ExpansionIterator {
     dim_1: usize,
     dim_2: usize,
     dim_3: usize,
@@ -96,7 +96,7 @@ impl Iterator for ExpansionIterator {
 }
 
 impl NaivePolyCube {
-    pub fn expand(&self) -> impl Iterator<Item = NaivePolyCube> + Clone {
+    pub fn expand(&self) -> ExpansionIterator {
         ExpansionIterator {
             dim_1: 1,
             dim_2: 1,

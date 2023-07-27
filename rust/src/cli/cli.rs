@@ -1,24 +1,46 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    io::ErrorKind,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use opencubes::{
-    hashless,
-    naive_polycube::NaivePolyCube,
-    pcube::{PCubeFile, RawPCube},
-    pointlist, rotation_reduced,
-};
+use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+mod enumerate;
+use enumerate::enumerate;
+
+fn finish_bar(bar: &ProgressBar, duration: Duration, expansions: usize, n: usize) {
+    let time = duration.as_micros();
+    let secs = time / 1_000_000;
+    let micros = time % 1_000_000;
+
+    if let Some(len) = bar.length() {
+        let pos_width = format!("{}", len).len();
+
+        let template = format!(
+            "[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}}"
+        );
+
+        bar.set_style(
+            ProgressStyle::with_template(&template)
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+    }
+
+    bar.finish_with_message(format!(
+        "Done! Found {expansions} expansions (N = {n}) in {secs}.{micros} s"
+    ));
+}
 
 fn unknown_bar() -> ProgressBar {
     let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
         .unwrap()
         .tick_strings(&[
+            ">---------",
             "=>--------",
             "<=>-------",
             "-<=>------",
@@ -29,19 +51,23 @@ fn unknown_bar() -> ProgressBar {
             "------<=>-",
             "-------<=>",
             "--------<=",
+            "---------<",
+            "--------<=",
             "-------<=>",
             "------<=>-",
-            "----<=>---",
             "-----<=>--",
             "---<=>----",
             "--<=>-----",
             "-<=>------",
             "<=>-------",
             "=>--------",
-            "----------",
         ]);
 
-    ProgressBar::new(100).with_style(style)
+    let bar = ProgressBar::new(100).with_style(style);
+
+    bar.enable_steady_tick(Duration::from_millis(66));
+
+    bar
 }
 
 pub fn make_bar(len: u64) -> indicatif::ProgressBar {
@@ -50,7 +76,7 @@ pub fn make_bar(len: u64) -> indicatif::ProgressBar {
     let pos_width = format!("{len}").len();
 
     let template =
-        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} remaining: [{{eta_precise}}] {{msg}}");
+        format!("[{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos:>{pos_width}}}/{{len}} {{msg}} remaining: [{{eta_precise}}]");
 
     bar.set_style(
         ProgressStyle::with_template(&template)
@@ -278,218 +304,6 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     println!("Success: {path}, containing {total_read} cubes, is valid");
 
     Ok(())
-}
-
-fn load_cache_file(n: usize) -> Option<PCubeFile> {
-    let name = format!("cubes_{n}.pcube");
-
-    match PCubeFile::new_file(&name) {
-        Ok(file) => Some(file),
-        Err(e) => {
-            if e.kind() == ErrorKind::InvalidData || e.kind() == ErrorKind::Other {
-                println!("Enountered invalid cache file {name}. Error: {e}.");
-            } else {
-                println!("Could not load cache file '{name}'. Error: {e}");
-            }
-            None
-        }
-    }
-}
-
-/// load closes cache file to n into a vec
-/// returns a vec and the next order above the found cache file
-fn load_cache(n: usize) -> (Vec<RawPCube>, usize) {
-    let calculate_from = 2;
-
-    for n in (calculate_from..n).rev() {
-        let name = format!("cubes_{n}.pcube");
-        let cache = if let Some(file) = load_cache_file(n) {
-            file
-        } else {
-            continue;
-        };
-
-        println!("Found cache for N = {n}. Loading data...");
-
-        if !cache.canonical() {
-            println!("Cached cubes are not canonical. Canonicalizing...")
-        }
-
-        let len = cache.len();
-
-        let mut error = None;
-        let mut total_loaded = 0;
-
-        let filter = |value| {
-            total_loaded += 1;
-            match value {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error = Some(e);
-                    None
-                }
-            }
-        };
-
-        let cached: HashSet<_> = cache.filter_map(filter).collect();
-
-        if let Some(e) = error {
-            println!("Error occured while loading {name}. Error: {e}");
-        } else {
-            let total_len = len.unwrap_or(total_loaded);
-
-            if total_len != cached.len() {
-                println!("There were non-unique cubes in the cache file. Continuing...")
-            }
-
-            return (cached.into_iter().collect(), n + 1);
-        }
-    }
-
-    println!("no cache file found reverting to start building from n=1");
-    let mut base = RawPCube::new_empty(1, 1, 1);
-    base.set(0, 0, 0, true);
-
-    let current = [base.clone()].to_vec();
-    //calculate from 2 because 1 is in the vec
-    (current, 2)
-}
-
-fn unique_expansions<F>(
-    mut expansion_fn: F,
-    use_cache: bool,
-    n: usize,
-    compression: Compression,
-    current: Vec<RawPCube>,
-    calculate_from: usize,
-    bar: &ProgressBar,
-) -> Vec<NaivePolyCube>
-where
-    F: FnMut(&ProgressBar, std::slice::Iter<'_, NaivePolyCube>) -> Vec<NaivePolyCube>,
-{
-    if n == 0 {
-        return Vec::new();
-    }
-
-    let mut current = current
-        .into_iter()
-        .map(NaivePolyCube::from)
-        .map(|v| v.canonical_form())
-        .collect::<Vec<_>>();
-
-    for i in calculate_from..=n {
-        bar.set_length(current.len() as u64);
-        bar.set_message(format!("base polycubes expanded for N = {i}..."));
-
-        let start = Instant::now();
-
-        let next = expansion_fn(&bar, current.iter());
-
-        bar.set_message(format!(
-            "Found {} unique expansions (N = {i}) in {} ms.",
-            next.len(),
-            start.elapsed().as_millis(),
-        ));
-
-        bar.finish();
-
-        if use_cache {
-            let name = &format!("cubes_{i}.pcube");
-            if !std::fs::File::open(name).is_ok() {
-                println!("Saving {} cubes to cache file", next.len());
-                PCubeFile::write_file(false, compression.into(), next.iter().map(Into::into), name)
-                    .unwrap();
-            } else {
-                println!("Cache file already exists for N = {i}. Not overwriting.");
-            }
-        }
-
-        current = next;
-    }
-
-    current
-}
-
-pub fn enumerate(opts: &EnumerateOpts) {
-    let n = opts.n;
-    let cache = !opts.no_cache;
-
-    if n < 2 {
-        println!("n < 2 unsuported");
-        return;
-    }
-
-    let start = Instant::now();
-
-    let (seed_list, startn) = if cache {
-        load_cache(n)
-    } else {
-        let mut base = RawPCube::new_empty(1, 1, 1);
-        base.set(0, 0, 0, true);
-
-        let current = [base].to_vec();
-        //calculate from 2 because 1 is in the vec
-        (current, 2)
-    };
-    let bar = make_bar(seed_list.len() as u64);
-
-    //Select enumeration function to run
-    let cubes_len = match (opts.mode, opts.no_parallelism) {
-        (EnumerationMode::Standard, true) => {
-            let cubes = unique_expansions(
-                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
-                    NaivePolyCube::unique_expansions(bar, current)
-                },
-                cache,
-                n,
-                opts.cache_compression,
-                seed_list,
-                startn,
-                &bar,
-            );
-            cubes.len()
-        }
-        (EnumerationMode::Standard, false) => {
-            let cubes = unique_expansions(
-                |bar, current: std::slice::Iter<'_, NaivePolyCube>| {
-                    NaivePolyCube::unique_expansions_rayon(bar, current)
-                },
-                cache,
-                n,
-                opts.cache_compression,
-                seed_list,
-                startn,
-                &bar,
-            );
-            cubes.len()
-        }
-        (EnumerationMode::RotationReduced, para) => {
-            if n > 16 {
-                println!("n > 16 not supported for rotation reduced");
-                return;
-            }
-            if !para {
-                println!("no parallel implementation for rotation-reduced, running single threaded")
-            }
-            rotation_reduced::gen_polycubes(n, &bar)
-        }
-        (EnumerationMode::PointList, para) => {
-            if n > 16 {
-                println!("n > 16 not supported for point-list");
-                return;
-            }
-            let cubes = pointlist::gen_polycubes(n, cache, !para, seed_list, startn, &bar);
-            cubes.len()
-        }
-        (EnumerationMode::Hashless, para) => {
-            hashless::gen_polycubes(n, !para, seed_list, startn, &bar)
-        }
-    };
-
-    let duration = start.elapsed();
-
-    println!("Unique polycubes found for N = {n}: {cubes_len}.",);
-    println!("Duration: {} ms", duration.as_millis());
 }
 
 pub fn convert(opts: &ConvertArgs) {

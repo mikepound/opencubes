@@ -1,14 +1,52 @@
 //! A rather naive polycube implementation.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, iter::FusedIterator};
 
-use indicatif::ProgressBar;
 use parking_lot::RwLock;
 
-use crate::pcube::RawPCube;
+use crate::{
+    iterator::{
+        AllPolycubeIterator, AllUniquePolycubeIterator, PolycubeIterator, UniquePolycubeIterator,
+    },
+    pcube::RawPCube,
+};
 
 mod expander;
 mod rotations;
+
+struct AllUniques {
+    uniques: std::collections::hash_set::IntoIter<NaivePolyCube>,
+    n: usize,
+    is_canonical: bool,
+}
+
+impl Iterator for AllUniques {
+    type Item = RawPCube;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.uniques.next().map(|v| RawPCube::from(v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.uniques.size_hint()
+    }
+}
+
+impl PolycubeIterator for AllUniques {
+    fn is_canonical(&self) -> bool {
+        self.is_canonical
+    }
+
+    fn n_hint(&self) -> Option<usize> {
+        Some(self.n)
+    }
+}
+
+impl FusedIterator for AllUniques {}
+impl ExactSizeIterator for AllUniques {}
+impl UniquePolycubeIterator for AllUniques {}
+impl AllPolycubeIterator for AllUniques {}
+impl AllUniquePolycubeIterator for AllUniques {}
 
 /// A polycube, represented as three dimensions and an array of booleans.
 ///
@@ -358,36 +396,82 @@ impl NaivePolyCube {
         cube_next
     }
 
-    /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
-    /// items in `from_set`.
-    ///
-    // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions<'a, I>(progress_bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn expansions<I>(from_set: I) -> impl Iterator<Item = Self>
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator,
+        I: Iterator<Item = NaivePolyCube>,
     {
-        let mut this_level = HashSet::new();
-
-        for value in from_set {
-            for expansion in value.expand().map(|v| v.crop()) {
-                // Skip expansions that are already in the list.
-                if this_level.contains(&expansion) {
-                    continue;
-                }
-
-                let max = expansion.canonical_form();
-
-                let missing = !this_level.contains(&max);
-
-                if missing {
-                    this_level.insert(max);
-                }
-            }
-
-            progress_bar.inc(1);
+        struct AllExpansions<T> {
+            current_expander: Option<expander::ExpansionIterator>,
+            from_set: T,
         }
 
-        this_level.into_iter().collect()
+        impl<T> AllExpansions<T>
+        where
+            T: Iterator<Item = NaivePolyCube>,
+        {
+            fn new(mut from_set: T) -> Self {
+                let current_expander = from_set.next().map(|v| v.expand());
+                Self {
+                    from_set,
+                    current_expander,
+                }
+            }
+        }
+
+        impl<T> Iterator for AllExpansions<T>
+        where
+            T: Iterator<Item = NaivePolyCube>,
+        {
+            type Item = NaivePolyCube;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                while self.current_expander.is_some() {
+                    if let Some(ref mut current_expander) = self.current_expander {
+                        if let Some(next_expansion) = current_expander.next().map(|v| v.crop()) {
+                            return Some(next_expansion);
+                        }
+                    }
+
+                    self.current_expander = self
+                        .from_set
+                        .next()
+                        .map(|v| NaivePolyCube::from(v).expand());
+                }
+
+                None
+            }
+        }
+
+        impl<T> FusedIterator for AllExpansions<T> where T: Iterator<Item = NaivePolyCube> {}
+        impl<T> ExactSizeIterator for AllExpansions<T> where T: ExactSizeIterator<Item = NaivePolyCube> {}
+
+        AllExpansions::new(from_set)
+    }
+
+    /// Obtain a list of [`NaivePolyCube`]s representing all unique expansions of the
+    /// items in `from_set`.
+    pub fn unique_expansions<I>(from_set: I) -> impl AllUniquePolycubeIterator
+    where
+        I: AllPolycubeIterator,
+    {
+        let out_n = from_set.n() + 1;
+        let mut uniques = HashSet::new();
+
+        Self::expansions(from_set.map(NaivePolyCube::from)).for_each(|v| {
+            if uniques.contains(&v) {
+                return;
+            }
+
+            let max = v.canonical_form();
+
+            uniques.insert(max);
+        });
+
+        AllUniques {
+            uniques: uniques.into_iter(),
+            n: out_n,
+            is_canonical: false,
+        }
     }
 
     /// Check whether this cube is already cropped.
@@ -508,52 +592,37 @@ impl NaivePolyCube {
 
 impl NaivePolyCube {
     // TODO: turn this into an iterator that yield unique expansions?
-    pub fn unique_expansions_rayon<'a, I>(bar: &ProgressBar, from_set: I) -> Vec<NaivePolyCube>
+    pub fn unique_expansions_rayon<I>(from_set: I) -> impl AllUniquePolycubeIterator
     where
-        I: Iterator<Item = &'a NaivePolyCube> + ExactSizeIterator + Clone + Send + Sync,
+        I: AllPolycubeIterator + ExactSizeIterator + Send + Sync + 'static,
     {
         use rayon::prelude::*;
 
-        if from_set.len() == 0 {
-            return Vec::new();
-        }
-
-        let available_parallelism = num_cpus::get();
-
-        let chunk_size = (from_set.len() / available_parallelism) + 1;
-        let chunks = (from_set.len() + chunk_size - 1) / chunk_size;
-
-        let chunk_iterator = (0..chunks).into_par_iter().map(|v| {
-            from_set
-                .clone()
-                .skip(v * chunk_size)
-                .take(chunk_size)
-                .into_iter()
-        });
+        let next_n = from_set.n() + 1;
 
         let this_level = RwLock::new(HashSet::new());
 
-        chunk_iterator.for_each(|v| {
-            for value in v {
-                for expansion in value.expand().map(|v| v.crop()) {
-                    // Skip expansions that are already in the list.
-                    if this_level.read().contains(&expansion) {
-                        continue;
-                    }
-
-                    let max = expansion.canonical_form();
-
-                    let missing = !this_level.read().contains(&max);
-
-                    if missing {
-                        this_level.write().insert(max);
-                    }
+        from_set.par_bridge().for_each(|v| {
+            for expansion in NaivePolyCube::from(v).expand().map(|v| v.crop()) {
+                // Skip expansions that are already in the list.
+                if this_level.read().contains(&expansion) {
+                    continue;
                 }
 
-                bar.inc(1);
+                let max = expansion.canonical_form();
+
+                let missing = !this_level.read().contains(&max);
+
+                if missing {
+                    this_level.write().insert(max);
+                }
             }
         });
 
-        this_level.into_inner().into_iter().collect()
+        AllUniques {
+            uniques: this_level.into_inner().into_iter(),
+            n: next_n,
+            is_canonical: false,
+        }
     }
 }

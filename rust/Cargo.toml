@@ -26,4 +26,4 @@ hashbrown = { version = "0.14", features = ["rayon"] }
 
 [[bin]]
 name = "opencubes"
-path = "./src/cli.rs"
+path = "./src/cli/cli.rs"

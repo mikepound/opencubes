@@ -25,6 +25,16 @@ struct XYZ {
     constexpr int8_t z() const { return data[2]; }
     constexpr int8_t &operator[](int offset) { return data[offset]; }
     constexpr int8_t operator[](int offset) const { return data[offset]; }
+    friend XYZ operator+(const XYZ &a, const XYZ &b) {
+        XYZ ret = a;
+        ret += b;
+        return ret;
+    }
+    void operator+=(const XYZ &b) {
+        data[0] += b.data[0];
+        data[1] += b.data[1];
+        data[2] += b.data[2];
+    }
 };
 
 struct HashXYZ {
@@ -34,26 +44,45 @@ struct HashXYZ {
 using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
-   protected:
-    size_t array_size;
-    std::unique_ptr<XYZ[]> array;
+   private:
+    struct {
+        uint8_t is_shared : 1;
+        uint8_t size : 7;  // MAX 127
+    } bits;
+    XYZ *array = nullptr;
+
+    static_assert(sizeof(bits) == sizeof(uint8_t));
 
    public:
     // Empty cube
-    Cube() : array_size(0) {}
+    Cube() : bits{0, 0} {}
 
     // Cube with N capacity
-    explicit Cube(size_t N) : array_size(N), array(std::make_unique<XYZ[]>(array_size)) {}
+    explicit Cube(uint8_t N) : bits{0, N}, array(new XYZ[bits.size]) {}
 
     // Construct from pieces
     Cube(std::initializer_list<XYZ> il) : Cube(il.size()) { std::copy(il.begin(), il.end(), begin()); }
 
+    // Construct from range.
+    Cube(const XYZ *start, const XYZ *end) : Cube(std::distance(start, end)) { std::copy(start, end, begin()); }
+
+    // Construct from external source.
+    // Cube shares this the memory until modified.
+    // Caller guarantees the memory given will live longer than *this
+    Cube(XYZ *start, uint8_t n) : bits{1, n}, array(start) {}
+
+    // Copy ctor.
     Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }
 
+    ~Cube() {
+        if (!bits.is_shared) {
+            delete[] array;
+        }
+    }
     friend void swap(Cube &a, Cube &b) {
         using std::swap;
         swap(a.array, b.array);
-        swap(a.array_size, b.array_size);
+        swap(a.bits, b.bits);
     }
 
     Cube(Cube &&mv) : Cube() { swap(*this, mv); }
@@ -69,15 +98,20 @@ struct Cube {
         return *this;
     }
 
-    size_t size() const { return array_size; }
+    size_t size() const { return bits.size; }
 
-    XYZ *data() { return array.get(); }
-    const XYZ *data() const { return array.get(); }
+    XYZ *data() {
+        if (bits.is_shared) {
+            // lift to RAM: this should never happen really.
+            Cube tmp(array, bits.size);
+            swap(*this, tmp);
+            std::printf("Bad use of Cube\n");
+        }
+        return array;
+    }
 
-    /**
-     * Define subset of vector operations for Cube
-     * This simplifies the code everywhere else.
-     */
+    const XYZ *data() const { return array; }
+
     XYZ *begin() { return data(); }
 
     XYZ *end() { return data() + size(); }

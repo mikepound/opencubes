@@ -3,7 +3,11 @@ use std::cmp::max;
 use hashbrown::HashSet;
 
 use crate::{
-    pointlist::{array_insert, array_shift}, polycubes::{point_list::{CubeMapPos, Dim, rotate::{to_min_rot_points, rot_matrix_points}}, rotation_reduced::rotate::MatrixCol},
+    pointlist::{array_insert, array_shift},
+    polycubes::{
+        point_list::{CubeMapPos, Dim},
+        rotation_reduced::rotate::MatrixCol,
+    },
 };
 
 pub struct MapStore<const N: usize> {
@@ -114,7 +118,7 @@ impl<const N: usize> MapStore<N> {
     /// and storing them in the hashset
     fn insert_map(&mut self, dim: &Dim, map: &CubeMapPos<N>, count: usize) {
         if !self.inner.contains(map) {
-            let map = to_min_rot_points(map, dim, count);
+            let map = map.to_min_rot_points(dim, count);
             self.inner.insert(map);
         }
     }
@@ -149,16 +153,16 @@ impl<const N: usize> MapStore<N> {
         use MatrixCol::*;
 
         if shape.x == shape.y && shape.x > 0 {
-            let rotz = rot_matrix_points(seed, shape, count, YN, XN, ZN, 1025);
+            let rotz = seed.rot_matrix_points(shape, count, YN, XN, ZN, 1025);
             self.do_cube_expansion(&rotz, shape, count);
         }
 
         if shape.y == shape.z && shape.y > 0 {
-            let rotx = rot_matrix_points(seed, shape, count, XN, ZP, YP, 1025);
+            let rotx = seed.rot_matrix_points(shape, count, XN, ZP, YP, 1025);
             self.do_cube_expansion(&rotx, shape, count);
         }
         if shape.x == shape.z && shape.x > 0 {
-            let roty = rot_matrix_points(seed, shape, count, ZP, YP, XN, 1025);
+            let roty = seed.rot_matrix_points(shape, count, ZP, YP, XN, 1025);
             self.do_cube_expansion(&roty, shape, count);
         }
 
@@ -180,7 +184,7 @@ impl<const N: usize> MapStore<N> {
         let mut map = Self::new();
         let shape = seed.extrapolate_dim();
 
-        let seed = to_min_rot_points(seed, &shape, count);
+        let seed = seed.to_min_rot_points(&shape, count);
         let shape = seed.extrapolate_dim();
 
         map.expand_cube_map(&seed, &shape, count);

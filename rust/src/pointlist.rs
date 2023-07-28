@@ -1,6 +1,10 @@
 use std::{cmp::max, time::Instant};
 
-use crate::polycubes::{point_list::{Dim, CubeMapPos, rotate::{rot_matrix_points, to_min_rot_points}}, pcube::RawPCube, rotation_reduced::rotate::MatrixCol};
+use crate::polycubes::{
+    pcube::RawPCube,
+    point_list::{CubeMapPos, Dim},
+    rotation_reduced::rotate::MatrixCol,
+};
 
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
@@ -18,7 +22,7 @@ type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPos<15>>>>;
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
 fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
-    let map = to_min_rot_points(map, dim, count);
+    let map = map.to_min_rot_points(dim, count);
     let mut body = CubeMapPos::new();
     for i in 1..count {
         body.cubes[i - 1] = map.cubes[i];
@@ -179,40 +183,18 @@ fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: 
 /// square sides may miss poly cubes otherwise
 #[inline]
 fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
+    use MatrixCol::*;
+
     if shape.x == shape.y && shape.x > 0 {
-        let rotz = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::YN,
-            MatrixCol::XN,
-            MatrixCol::ZN,
-            1025,
-        );
+        let rotz = seed.rot_matrix_points(shape, count, YN, XN, ZN, 1025);
         do_cube_expansion(dst, &rotz, shape, count);
     }
     if shape.y == shape.z && shape.y > 0 {
-        let rotx = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::XN,
-            MatrixCol::ZP,
-            MatrixCol::YP,
-            1025,
-        );
+        let rotx = seed.rot_matrix_points(shape, count, XN, ZP, YP, 1025);
         do_cube_expansion(dst, &rotx, shape, count);
     }
     if shape.x == shape.z && shape.x > 0 {
-        let roty = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::ZP,
-            MatrixCol::YP,
-            MatrixCol::XN,
-            1025,
-        );
+        let roty = seed.rot_matrix_points(shape, count, ZP, YP, XN, 1025);
         do_cube_expansion(dst, &roty, shape, count);
     }
     do_cube_expansion(dst, seed, shape, count);

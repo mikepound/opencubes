@@ -1,11 +1,9 @@
-pub mod rotate;
 pub mod expand;
+pub mod rotate;
 
 use std::cmp::{max, min};
 
-use self::rotate::{map_coord, to_min_rot_points};
-
-use super::pcube::RawPCube;
+use super::{pcube::RawPCube, rotation_reduced::rotate::MatrixCol};
 use crate::polycubes::rotation_reduced::rotate::MatrixCol::*;
 
 /// the "Dimension" or "Shape" of a poly cube
@@ -111,9 +109,9 @@ impl<const N: usize> From<&RawPCube> for CubeMapPos<N> {
             for dy in 0..y as u16 {
                 for dx in 0..x as u16 {
                     if src.get(dx as u8, dy as u8, dz as u8) {
-                        let cx = map_coord(dx, dy, dz, &dim, x_col);
-                        let cy = map_coord(dx, dy, dz, &dim, y_col);
-                        let cz = map_coord(dx, dy, dz, &dim, z_col);
+                        let cx = Self::map_coord(dx, dy, dz, &dim, x_col);
+                        let cy = Self::map_coord(dx, dy, dz, &dim, y_col);
+                        let cz = Self::map_coord(dx, dy, dz, &dim, z_col);
                         if cx > rdim.x as u16 || cy > rdim.y as u16 || cz > rdim.z as u16 {
                             panic!("illegal block place {}, {}, {} {:?}", cx, cy, cz, dim)
                         }
@@ -161,6 +159,19 @@ impl<const N: usize> CubeMapPos<N> {
     pub fn new() -> Self {
         CubeMapPos { cubes: [0; N] }
     }
+
+    #[inline]
+    pub fn map_coord(x: u16, y: u16, z: u16, shape: &Dim, col: MatrixCol) -> u16 {
+        match col {
+            MatrixCol::XP => x,
+            MatrixCol::XN => shape.x as u16 - x,
+            MatrixCol::YP => y,
+            MatrixCol::YN => shape.y as u16 - y,
+            MatrixCol::ZP => z,
+            MatrixCol::ZN => shape.z as u16 - z,
+        }
+    }
+
     pub fn extrapolate_count(&self) -> usize {
         let mut count = 1;
         while self.cubes[count] > self.cubes[count - 1] {
@@ -168,6 +179,7 @@ impl<const N: usize> CubeMapPos<N> {
         }
         count
     }
+
     pub fn extrapolate_dim(&self) -> Dim {
         let count = self.extrapolate_count();
         let mut dim = Dim { x: 0, y: 0, z: 0 };
@@ -267,9 +279,9 @@ impl<const N: usize> CubeMapPos<N> {
             let dx = d & 0x1f;
             let dy = (d >> 5) & 0x1f;
             let dz = (d >> 10) & 0x1f;
-            let cx = map_coord(dx, dy, dz, &dim, x_col);
-            let cy = map_coord(dx, dy, dz, &dim, y_col);
-            let cz = map_coord(dx, dy, dz, &dim, z_col);
+            let cx = Self::map_coord(dx, dy, dz, &dim, x_col);
+            let cy = Self::map_coord(dx, dy, dz, &dim, y_col);
+            let cz = Self::map_coord(dx, dy, dz, &dim, z_col);
             let pack = ((cz << 10) | (cy << 5) | cx) as u16;
             dst.cubes[i] = pack;
             // unsafe {*dst.cubes.get_unchecked_mut(i) = pack;}
@@ -327,7 +339,7 @@ impl<const N: usize> CubeMapPos<N> {
                 dim = rdim;
                 root_candidate.cubes[0..count].sort_unstable();
             }
-            let mrp = to_min_rot_points(&root_candidate, &dim, count);
+            let mrp = root_candidate.to_min_rot_points(&dim, count);
             if &mrp < seed {
                 return false;
             }

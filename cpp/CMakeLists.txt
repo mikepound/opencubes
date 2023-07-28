@@ -38,6 +38,9 @@ macro(ConfigureTarget Target)
 	)
 endmacro()
 
+add_library(mapped_file STATIC "libraries/mapped_file.cpp")
+ConfigureTarget(mapped_file)
+
 # Source files
 add_library(CubeObjs OBJECT
 	"src/cubes.cpp"
@@ -50,6 +53,7 @@ ConfigureTarget(CubeObjs)
 # Build main program
 add_executable(${PROJECT_NAME} "program.cpp" $<TARGET_OBJECTS:CubeObjs>)
 target_link_libraries(${PROJECT_NAME} pthread)
+target_link_libraries(${PROJECT_NAME} mapped_file)
 ConfigureTarget(${PROJECT_NAME})
 
 # Optionally build tests

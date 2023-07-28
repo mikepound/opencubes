@@ -22,7 +22,7 @@ type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPos<15>>>>;
 /// helper function to not duplicate code for canonicalising polycubes
 /// and storing them in the hashset
 fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
-    let map = map.to_min_rot_points(dim, count);
+    let map = map.to_min_rot_points(*dim, count);
     let mut body = CubeMapPos::new();
     for i in 1..count {
         body.cubes[i - 1] = map.cubes[i];
@@ -186,15 +186,15 @@ fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: us
     use MatrixCol::*;
 
     if shape.x == shape.y && shape.x > 0 {
-        let rotz = seed.rot_matrix_points(shape, count, YN, XN, ZN, 1025);
+        let rotz = seed.rot_matrix_points(*shape, count, YN, XN, ZN, 1025);
         do_cube_expansion(dst, &rotz, shape, count);
     }
     if shape.y == shape.z && shape.y > 0 {
-        let rotx = seed.rot_matrix_points(shape, count, XN, ZP, YP, 1025);
+        let rotx = seed.rot_matrix_points(*shape, count, XN, ZP, YP, 1025);
         do_cube_expansion(dst, &rotx, shape, count);
     }
     if shape.x == shape.z && shape.x > 0 {
-        let roty = seed.rot_matrix_points(shape, count, ZP, YP, XN, 1025);
+        let roty = seed.rot_matrix_points(*shape, count, ZP, YP, XN, 1025);
         do_cube_expansion(dst, &roty, shape, count);
     }
     do_cube_expansion(dst, seed, shape, count);

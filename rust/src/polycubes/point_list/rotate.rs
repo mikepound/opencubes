@@ -19,7 +19,7 @@ macro_rules ! rot_matrix_points {
 macro_rules! def_rot_matrix_points {
     ($name:ident, $(($x:expr, $y:expr, $z:expr)),*) => {
         #[inline(always)]
-        fn $name(&self, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
+        fn $name(&self, shape: Dim, count: usize, res: &mut CubeMapPos<N>) {
             rot_matrix_points!(self, shape, count, *res, $(($x, $y, $z),)*);
         }
     };
@@ -29,7 +29,7 @@ impl<const N: usize> CubeMapPos<N> {
     #[inline]
     pub fn rot_matrix_points(
         &self,
-        shape: &Dim,
+        shape: Dim,
         count: usize,
         x_col: MatrixCol,
         y_col: MatrixCol,
@@ -42,9 +42,9 @@ impl<const N: usize> CubeMapPos<N> {
             let ix = coord & 0x1f;
             let iy = (coord >> 5) & 0x1f;
             let iz = (coord >> 10) & 0x1f;
-            let dx = Self::map_coord(ix, iy, iz, shape, x_col);
-            let dy = Self::map_coord(ix, iy, iz, shape, y_col);
-            let dz = Self::map_coord(ix, iy, iz, shape, z_col);
+            let dx = Self::map_coord(ix, iy, iz, &shape, x_col);
+            let dy = Self::map_coord(ix, iy, iz, &shape, y_col);
+            let dz = Self::map_coord(ix, iy, iz, &shape, z_col);
             let v = (dz << 10) | (dy << 5) | dx;
             mmin = min(mmin, v);
             res.cubes[i] = v;
@@ -92,7 +92,7 @@ impl<const N: usize> CubeMapPos<N> {
         (ZP, XP, YP)
     );
 
-    pub fn to_min_rot_points(&self, shape: &Dim, count: usize) -> CubeMapPos<N> {
+    pub fn to_min_rot_points(&self, shape: Dim, count: usize) -> CubeMapPos<N> {
         let mut res = *self;
         if shape.x == shape.y && shape.x != 0 {
             self.xy_rots_points(shape, count, &mut res);

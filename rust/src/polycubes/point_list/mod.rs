@@ -155,6 +155,30 @@ impl<const N: usize> From<CubeMapPos<N>> for RawPCube {
     }
 }
 
+impl CubeMapPos<0> {
+    ///linearly scan backwards to insertion point overwrites end of slice
+    #[inline]
+    fn array_insert(val: u16, arr: &mut [u16]) {
+        for i in 1..(arr.len()) {
+            if arr[arr.len() - 1 - i] > val {
+                arr[arr.len() - i] = arr[arr.len() - 1 - i];
+            } else {
+                arr[arr.len() - i] = val;
+                return;
+            }
+        }
+        arr[0] = val;
+    }
+
+    /// moves contents of slice to index x+1, x==0 remains
+    #[inline]
+    fn array_shift(arr: &mut [u16]) {
+        for i in 1..(arr.len()) {
+            arr[arr.len() - i] = arr[arr.len() - 1 - i];
+        }
+    }
+}
+
 impl<const N: usize> CubeMapPos<N> {
     pub fn new() -> Self {
         CubeMapPos { cubes: [0; N] }
@@ -339,11 +363,163 @@ impl<const N: usize> CubeMapPos<N> {
                 dim = rdim;
                 root_candidate.cubes[0..count].sort_unstable();
             }
-            let mrp = root_candidate.to_min_rot_points(&dim, count);
+            let mrp = root_candidate.to_min_rot_points(dim, count);
             if &mrp < seed {
                 return false;
             }
         }
         true
+    }
+}
+
+macro_rules! cube_map_pos_expand {
+    ($name:ident, $dim:ident, $shift:literal) => {
+        #[inline(always)]
+        pub fn $name(self, shape: Dim, count: usize) -> impl Iterator<Item = (Dim, usize, Self)> {
+            struct Iter<const C: usize> {
+                inner: CubeMapPos<C>,
+                shape: Dim,
+                count: usize,
+                i: usize,
+                stored: Option<(Dim, usize, CubeMapPos<C>)>,
+            }
+
+            impl<'a, const C: usize> Iterator for Iter<C> {
+                type Item = (Dim, usize, CubeMapPos<C>);
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    loop {
+                        if let Some(stored) = self.stored.take() {
+                            return Some(stored);
+                        }
+
+                        let i = self.i;
+
+                        if i == self.count {
+                            return None;
+                        }
+
+                        self.i += 1;
+                        let coord = *self.inner.cubes.get(i)?;
+
+                        let plus = coord + (1 << $shift);
+                        let minus = coord - (1 << $shift);
+
+                        if !self.inner.cubes[(i + 1)..self.count].contains(&plus) {
+                            let mut new_shape = self.shape;
+                            let mut new_map = self.inner;
+
+                            CubeMapPos::array_insert(plus, &mut new_map.cubes[i..=self.count]);
+                            new_shape.$dim =
+                                max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
+
+                            self.stored = Some((new_shape, self.count + 1, new_map));
+                        }
+
+                        let mut new_map = self.inner;
+                        let mut new_shape = self.shape;
+
+                        // If the coord is out of bounds for $dim, shift everything
+                        // over and create the cube at the out-of-bounds position.
+                        // If it is in bounds, check if the $dim - 1 value already
+                        // exists.
+                        let insert_coord = if (coord >> $shift) & 0x1f != 0 {
+                            if !self.inner.cubes[0..i].contains(&minus) {
+                                minus
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            new_shape.$dim += 1;
+                            for i in 0..self.count {
+                                new_map.cubes[i] += 1 << $shift;
+                            }
+                            coord
+                        };
+
+                        CubeMapPos::array_shift(&mut new_map.cubes[i..=self.count]);
+                        CubeMapPos::array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+                        return Some((new_shape, self.count + 1, new_map));
+                    }
+                }
+            }
+
+            Iter {
+                inner: self,
+                shape,
+                count,
+                i: 0,
+                stored: None,
+            }
+        }
+    };
+}
+
+impl<const N: usize> CubeMapPos<N> {
+    cube_map_pos_expand!(expand_x, x, 0);
+    cube_map_pos_expand!(expand_y, y, 5);
+    cube_map_pos_expand!(expand_z, z, 10);
+
+    /// reduce number of expansions needing to be performed based on
+    /// X >= Y >= Z constraint on Dim
+    #[inline]
+    #[must_use]
+    fn do_expand(self, shape: Dim, count: usize) -> impl Iterator<Item = (Dim, usize, Self)> {
+        let expand_ys = if shape.y < shape.x {
+            Some(self.expand_y(shape, count))
+        } else {
+            None
+        };
+
+        let expand_zs = if shape.z < shape.y {
+            Some(self.expand_z(shape, count))
+        } else {
+            None
+        };
+
+        self.expand_x(shape, count)
+            .chain(expand_ys.into_iter().flatten())
+            .chain(expand_zs.into_iter().flatten())
+    }
+
+    /// perform the cube expansion for a given polycube
+    /// if perform extra expansions for cases where the dimensions are equal as
+    /// square sides may miss poly cubes otherwise
+    #[inline]
+    pub fn expand(
+        &self,
+        shape: Dim,
+        count: usize,
+    ) -> impl Iterator<Item = (Dim, usize, Self)> + '_ {
+        use MatrixCol::*;
+
+        let z = if shape.x == shape.y && shape.x > 0 {
+            let rotz = self.rot_matrix_points(shape, count, YN, XN, ZN, 1025);
+            Some(rotz.do_expand(shape, count))
+        } else {
+            None
+        };
+
+        let y = if shape.y == shape.z && shape.y > 0 {
+            let rotx = self.rot_matrix_points(shape, count, XN, ZP, YP, 1025);
+            Some(rotx.do_expand(shape, count))
+        } else {
+            None
+        };
+
+        let x = if shape.x == shape.z && shape.x > 0 {
+            let roty = self.rot_matrix_points(shape, count, ZP, YP, XN, 1025);
+            Some(roty.do_expand(shape, count))
+        } else {
+            None
+        };
+
+        let seed = self.do_expand(shape, count);
+
+        z.into_iter()
+            .flatten()
+            .chain(y.into_iter().flatten())
+            .chain(x.into_iter().flatten())
+            .chain(seed)
     }
 }

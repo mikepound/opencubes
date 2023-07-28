@@ -29,10 +29,31 @@ impl MapStore {
     }
 
     fn insert(&self, plm: &PointListMeta<16>) {
-        let map = plm.point_list.to_min_rot_points(plm.dim, plm.count);
-        let mut body = CubeMapPos::new();
+        let map = &plm.point_list;
+        let dim = plm.dim;
+        let count = plm.count;
 
-        body.cubes[0..plm.count].copy_from_slice(&map.cubes[1..plm.count + 1]);
+        // Check if we don't already happen to be in the minimum rotation position.
+        let mut body_maybemin = CubeMapPos::new();
+        body_maybemin.cubes[0..count].copy_from_slice(&map.cubes[1..count + 1]);
+        let dim_maybe = map.extrapolate_dim();
+
+        // Weirdly enough, doing the copy and doing the lookup check this
+        // way is faster than only copying if `inner` has en entry for
+        // dim_maybe.
+        if self
+            .inner
+            .get(&(dim_maybe, map.cubes[0]))
+            .map(|v| v.read().contains(&body_maybemin))
+            == Some(true)
+        {
+            return;
+        }
+
+        let map = map.to_min_rot_points(dim, count);
+
+        let mut body = CubeMapPos::new();
+        body.cubes[0..count].copy_from_slice(&map.cubes[1..count + 1]);
 
         let entry = self
             .inner

@@ -6,6 +6,25 @@ use crate::polycubes::point_list::{CubeMapPos, Dim};
 
 use MatrixCol::*;
 
+// NOTE: this could technically be an `fn`, but iterating over the tuples
+// slows down the program by 2x.
+macro_rules ! rot_matrix_points {
+    ($self:expr, $shape:expr, $count:expr, $res:expr, $(($x:expr, $y:expr, $z:expr),)*) => {
+        $(
+            $res = min($res, $self.rot_matrix_points($shape, $count, $x, $y, $z, $res.cubes[0]));
+        )*
+    }
+}
+
+macro_rules! def_rot_matrix_points {
+    ($name:ident, $(($x:expr, $y:expr, $z:expr)),*) => {
+        #[inline(always)]
+        fn $name(&self, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
+            rot_matrix_points!(self, shape, count, *res, $(($x, $y, $z),)*);
+        }
+    };
+}
+
 impl<const N: usize> CubeMapPos<N> {
     #[inline]
     pub fn rot_matrix_points(
@@ -39,116 +58,39 @@ impl<const N: usize> CubeMapPos<N> {
         res
     }
 
-    #[inline]
-    fn xy_rots_points(&self, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YN, XN, ZN, res.cubes[0]),
-        );
+    def_rot_matrix_points!(
+        xy_rots_points,
+        (YN, XN, ZN),
+        (YP, XP, ZN),
+        (YP, XN, ZP),
+        (YN, XP, ZP)
+    );
 
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YP, XP, ZN, res.cubes[0]),
-        );
+    def_rot_matrix_points!(
+        yz_rots_points,
+        (XN, ZP, YP),
+        (XN, ZN, YN),
+        (XP, ZP, YN),
+        (XP, ZN, YP)
+    );
 
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YP, XN, ZP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YN, XP, ZP, res.cubes[0]),
-        );
-    }
-
-    #[inline]
-    fn yz_rots_points(&self, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, XN, ZP, YP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, XN, ZN, YN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, XP, ZP, YN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, XP, ZN, YP, res.cubes[0]),
-        );
-    }
-
-    #[inline]
-    fn xyz_rots_points(&self, shape: &Dim, count: usize, res: &mut CubeMapPos<N>) {
-        //xz
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZP, YP, XN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZN, YN, XN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZN, YP, XP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZP, YN, XP, res.cubes[0]),
-        );
-
-        //xyz
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZP, XN, YN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YP, ZP, XP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YN, ZN, XP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZN, XP, YN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YP, ZN, XN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, YN, ZP, XN, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZN, XN, YP, res.cubes[0]),
-        );
-
-        *res = min(
-            *res,
-            self.rot_matrix_points(shape, count, ZP, XP, YP, res.cubes[0]),
-        );
-    }
+    def_rot_matrix_points!(
+        xyz_rots_points,
+        // xz
+        (ZP, YP, XN),
+        (ZN, YN, XN),
+        (ZN, YP, XP),
+        (ZP, YN, XP),
+        // xyz
+        (ZP, XN, YN),
+        (YP, ZP, XP),
+        (YN, ZN, XP),
+        (ZN, XP, YN),
+        (YP, ZN, XN),
+        (YN, ZP, XN),
+        (ZN, XN, YP),
+        (ZP, XP, YP)
+    );
 
     pub fn to_min_rot_points(&self, shape: &Dim, count: usize) -> CubeMapPos<N> {
         let mut res = *self;
@@ -164,19 +106,14 @@ impl<const N: usize> CubeMapPos<N> {
             self.xyz_rots_points(shape, count, &mut res);
         }
 
-        res = min(
+        rot_matrix_points!(
+            self,
+            shape,
+            count,
             res,
-            self.rot_matrix_points(shape, count, XP, YN, ZN, res.cubes[0]),
-        );
-
-        res = min(
-            res,
-            self.rot_matrix_points(shape, count, XN, YP, ZN, res.cubes[0]),
-        );
-
-        res = min(
-            res,
-            self.rot_matrix_points(shape, count, XN, YN, ZP, res.cubes[0]),
+            (XP, YN, ZN),
+            (XN, YP, ZN),
+            (XN, YN, ZP),
         );
 
         res

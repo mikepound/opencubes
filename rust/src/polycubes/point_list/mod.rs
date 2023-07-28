@@ -147,27 +147,25 @@ impl<const N: usize> From<CubeMapPos<N>> for RawPCube {
     }
 }
 
-impl CubeMapPos<0> {
-    ///linearly scan backwards to insertion point overwrites end of slice
-    #[inline]
-    fn array_insert(val: u16, arr: &mut [u16]) {
-        for i in 1..(arr.len()) {
-            if arr[arr.len() - 1 - i] > val {
-                arr[arr.len() - i] = arr[arr.len() - 1 - i];
-            } else {
-                arr[arr.len() - i] = val;
-                return;
-            }
-        }
-        arr[0] = val;
-    }
-
-    /// moves contents of slice to index x+1, x==0 remains
-    #[inline]
-    fn array_shift(arr: &mut [u16]) {
-        for i in 1..(arr.len()) {
+/// Linearly scan backwards to insertion point overwrites end of slice
+#[inline]
+fn array_insert(val: u16, arr: &mut [u16]) {
+    for i in 1..(arr.len()) {
+        if arr[arr.len() - 1 - i] > val {
             arr[arr.len() - i] = arr[arr.len() - 1 - i];
+        } else {
+            arr[arr.len() - i] = val;
+            return;
         }
+    }
+    arr[0] = val;
+}
+
+/// Moves contents of slice to index x+1, x==0 remains
+#[inline]
+fn array_shift(arr: &mut [u16]) {
+    for i in 1..(arr.len()) {
+        arr[arr.len() - i] = arr[arr.len() - 1 - i];
     }
 }
 
@@ -399,10 +397,7 @@ macro_rules! cube_map_pos_expand {
                             let mut new_shape = self.inner.dim;
                             let mut new_map = self.inner.point_list;
 
-                            CubeMapPos::array_insert(
-                                plus,
-                                &mut new_map.cubes[i..=self.inner.count],
-                            );
+                            array_insert(plus, &mut new_map.cubes[i..=self.inner.count]);
                             new_shape.$dim =
                                 max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
 
@@ -434,8 +429,8 @@ macro_rules! cube_map_pos_expand {
                             coord
                         };
 
-                        CubeMapPos::array_shift(&mut new_map.cubes[i..=self.inner.count]);
-                        CubeMapPos::array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+                        array_shift(&mut new_map.cubes[i..=self.inner.count]);
+                        array_insert(insert_coord, &mut new_map.cubes[0..=i]);
                         return Some(PointListMeta {
                             point_list: new_map,
                             dim: new_shape,
@@ -582,9 +577,10 @@ impl<const N: usize> From<PointListMeta<N>> for RawPCube {
 
 impl<const N: usize> PolyCube for PointListMeta<N> {
     fn canonical_form(&self) -> Self {
-        PointListMeta {point_list: self.point_list.to_min_rot_points(self.dims(), self.size()),
+        PointListMeta {
+            point_list: self.point_list.to_min_rot_points(self.dims(), self.size()),
             count: self.count,
-            dim: self.dim
+            dim: self.dim,
         }
     }
 

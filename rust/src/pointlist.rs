@@ -103,6 +103,8 @@ impl MapStore {
             }
         }
 
+        bar.set_position(0);
+        bar.set_length(self.inner.len() as u64);
         bar.set_message(format!("seed subsets expanded for N = {}...", count + 1));
 
         let inner_exp = |((shape, first_cube), body): (_, RwLock<HashSet<_>>)| {

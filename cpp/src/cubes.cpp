@@ -261,10 +261,12 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         }
         if (split_cache) {
             // drop targetShape from Hashy
-            sitr = hashes.byshape.erase(sitr);
-        } else {
-            ++sitr;
+            for (auto &subset : hashes.byshape[targetShape].byhash) {
+                subset.set.clear();
+                subset.set.reserve(1);
+            }
         }
+        ++sitr;
     }
     if (write_cache && !split_cache) {
         Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);

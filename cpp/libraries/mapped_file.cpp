@@ -62,13 +62,13 @@ int file::open(const char* fname) {
 
     fd = ::open64(fname, O_RDONLY);
     if (fd == -1) {
-        std::fprintf(stderr, "Error opening file for reading\n");
+        //std::fprintf(stderr, "Error opening file for reading\n");
         return -1;
     }
 
     struct stat64 finfo;
     if (fstat64(fd, &finfo)) {
-        std::fprintf(stderr, "Error opening file for reading\n");
+        std::fprintf(stderr, "Error getting file size: %s\n", std::strerror(errno));
         return -1;
     }
     fd_size = finfo.st_size;
@@ -87,7 +87,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     if (!flags) {
         fd = ::open64(fname, O_RDWR | O_CLOEXEC);
         if (fd == -1) {
-            std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
 
@@ -103,7 +103,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     } else if ((flags & (CREATE | RESIZE)) == (CREATE | RESIZE)) {
         fd = ::open64(fname, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, fperms);
         if (fd == -1) {
-            std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
         fd_rw = true;
@@ -112,7 +112,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     } else if ((flags & RESIZE) != 0) {
         fd = ::open64(fname, O_RDWR | O_CLOEXEC, fperms);
         if (fd == -1) {
-            std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
         fd_rw = true;
@@ -205,7 +205,7 @@ void region::remap(const seekoff_t fpos, const len_t size) {
             return;
         }
         map_ptr = newptr;
-        map_size = size;
+        map_size = newsize;
         return;
     }
 
@@ -233,7 +233,7 @@ void region::remap(const seekoff_t fpos, const len_t size) {
         }
     } else {
         // RO mapping
-        if (mfile->size() < fpos) {
+        if (mfile->size() <= fpos) {
             // can't: the backing file is too small.
             std::fprintf(stderr, "Error seeking past end of file.\n");
             std::abort();

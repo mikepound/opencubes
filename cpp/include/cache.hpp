@@ -26,6 +26,8 @@ struct Cache {
     };
 
     static void save(std::string path, Hashy& hashes, uint8_t n);
+    // save_split() saves only the given target shape from Hashy
+    static void save_split(std::string path, Hashy& hashes, XYZ target, uint8_t n);
     static Hashy load(std::string path, uint32_t extractShape = ALL_SHAPES);
 
     int filedesc;

@@ -5,7 +5,7 @@
 #include <limits>
 #include <string>
 #include <unordered_set>
-
+#include <cassert>
 #include "utils.hpp"
 
 /*
@@ -45,6 +45,7 @@ void Cache::save(std::string path, Hashy &hashes, uint8_t n) {
     header.n = n;
     header.numShapes = hashes.byshape.size();
     header.numPolycubes = hashes.size();
+    assert(header.numShapes <= header.numPolycubes);
     ofs.write((const char *)&header, sizeof(header));
 
     std::vector<XYZ> keys;
@@ -78,6 +79,43 @@ void Cache::save(std::string path, Hashy &hashes, uint8_t n) {
     }
 
     std::printf("saved %s\n\r", path.c_str());
+}
+
+void Cache::save_split(std::string path, Hashy &hashes, XYZ target, uint8_t n) {
+    auto& subhashy = hashes.byshape.at(target);
+    if (subhashy.size() == 0) return;
+
+    std::ofstream ofs(path, std::ios::binary);
+    Header header;
+    header.magic = MAGIC;
+    header.n = n;
+    header.numShapes = 1;
+    header.numPolycubes = subhashy.size();
+    assert(header.numShapes <= header.numPolycubes);
+    ofs.write((const char *)&header, sizeof(header));
+
+    ShapeEntry se;
+    se.dim0 = target.x();
+    se.dim1 = target.y();
+    se.dim2 = target.z();
+    se.reserved = 0;
+    se.offset = sizeof(Header) + sizeof(ShapeEntry);
+    se.size = subhashy.size() * XYZ_SIZE * n;
+    ofs.write((const char *)&se, sizeof(ShapeEntry));
+
+    // put XYZs
+    for (auto &subset : subhashy.byhash)
+        for (const auto &c : subset.set) {
+            if constexpr (sizeof(XYZ) == XYZ_SIZE) {
+                ofs.write((const char *)c.data(), sizeof(XYZ) * c.size());
+            } else {
+                for (const auto &p : c) {
+                    ofs.write((const char *)p.data, XYZ_SIZE);
+                }
+            }
+        }
+
+    std::printf("saved split [%2d %2d %2d] %s\n\r", target.x(),target.y(),target.z(), path.c_str());
 }
 
 Hashy Cache::load(std::string path, uint32_t extractShape) {

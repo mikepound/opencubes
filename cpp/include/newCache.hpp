@@ -58,6 +58,7 @@ class CubeIterator {
 
 class ShapeRange {
    public:
+    explicit ShapeRange() {}
     ShapeRange(XYZ* start, XYZ* stop, uint64_t _cubeLen, XYZ _shape)
         : b(_cubeLen, start), e(_cubeLen, stop), size_(((uint64_t)stop - (uint64_t)start) / (_cubeLen * sizeof(XYZ))), shape_(_shape) {}
 

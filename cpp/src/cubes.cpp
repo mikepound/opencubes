@@ -48,7 +48,7 @@ struct Workset {
         auto a = _begin;
         _begin += 500;
         if (_begin > _end) _begin = _end;
-        return {a, _begin, a < _end, 100 * (float)((uint64_t)a.m_ptr - (uint64_t)_begin_total.m_ptr) / ((uint64_t)_end.m_ptr - (uint64_t)_begin_total.m_ptr)};
+        return {a, _begin, a < _end, 100 * float(std::distance(_begin_total.data(), a.data())) / std::distance(_begin_total.data(), _end.data())};
     }
 
     void expand(const Cube &c) {

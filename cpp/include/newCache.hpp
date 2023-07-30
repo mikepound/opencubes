@@ -27,6 +27,8 @@ class CubeIterator {
     const value_type operator*() const { return Cube(m_ptr, n); }
     // pointer operator->() { return (pointer)m_ptr; }
 
+    const XYZ* data() const { return m_ptr; }
+
     // Prefix increment
     CubeIterator& operator++() {
         m_ptr += n;
@@ -49,7 +51,7 @@ class CubeIterator {
     friend bool operator<(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr < b.m_ptr; };
     friend bool operator>(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr > b.m_ptr; };
     friend bool operator!=(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr != b.m_ptr; };
-    friend class Workset;
+    //friend class Workset;
 
    private:
     uint32_t n;

@@ -336,7 +336,7 @@ class array_region : protected region {
      * Get pointer to first mapped element.
      */
     type* get() { return static_cast<type*>(data()); }
-    const type* get() const { return static_cast<type*>(data()); }
+    const type* get() const { return static_cast<const type*>(data()); }
 
     using region::flush;
     using region::getFile;

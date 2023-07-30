@@ -18,7 +18,7 @@ class CubeIterator {
     using reference = Cube&;  // or also value_type&
 
     // constructor
-    CubeIterator(uint32_t _n, XYZ* ptr) : n(_n), m_ptr(ptr) {}
+    CubeIterator(uint32_t _n, const XYZ* ptr) : n(_n), m_ptr(ptr) {}
 
     // invalid iterator (can't deference)
     explicit CubeIterator() : n(0), m_ptr(nullptr) {}
@@ -53,13 +53,13 @@ class CubeIterator {
 
    private:
     uint32_t n;
-    XYZ* m_ptr;
+    const XYZ* m_ptr;
 };
 
 class ShapeRange {
    public:
-    ShapeRange(XYZ* start, XYZ* stop, uint64_t _cubeLen, XYZ _shape)
-        : b(_cubeLen, start), e(_cubeLen, stop), size_(((uint64_t)stop - (uint64_t)start) / (_cubeLen * sizeof(XYZ))), shape_(_shape) {}
+    ShapeRange(const XYZ* start, const XYZ* stop, uint64_t _cubeLen, XYZ _shape)
+        : b(_cubeLen, start), e(_cubeLen, stop), size_(std::distance(start, stop) / _cubeLen), shape_(_shape) {}
 
     CubeIterator begin() { return b; }
     CubeIterator end() { return e; }
@@ -118,26 +118,26 @@ class CacheReader : public ICache {
     };
 
     CubeIterator begin() {
-        uint8_t* start = filePointer + shapes[0].offset;
-        return CubeIterator(header->n, (XYZ*)start);
+        const uint8_t* start = filePointer + shapes[0].offset;
+        return CubeIterator(header->n, (const XYZ*)start);
     }
 
     CubeIterator end() {
-        uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
-        return CubeIterator(header->n, (XYZ*)stop);
+        const uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
+        return CubeIterator(header->n, (const XYZ*)stop);
     }
 
     ShapeRange getCubesByShape(uint32_t i) override;
 
    private:
-    uint8_t* filePointer;
+    const uint8_t* filePointer;
     std::string path_;
     int fileDescriptor_;
     uint64_t fileSize_;
     bool fileLoaded_;
-    Header dummyHeader;
-    Header* header;
-    ShapeEntry* shapes;
+    const Header dummyHeader;
+    const Header* header;
+    const ShapeEntry* shapes;
 };
 
 class FlatCache : public ICache {

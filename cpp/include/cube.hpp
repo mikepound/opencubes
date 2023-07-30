@@ -69,7 +69,7 @@ struct Cube {
     // Construct from external source.
     // Cube shares this the memory until modified.
     // Caller guarantees the memory given will live longer than *this
-    Cube(XYZ *start, uint8_t n) : bits{1, n}, array(start) {}
+    Cube(const XYZ *start, uint8_t n) : bits{1, n}, array(const_cast<XYZ*>(start)) {}
 
     // Copy ctor.
     Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }

@@ -6,8 +6,7 @@
 
 #include <iostream>
 
-CacheReader::CacheReader()
-    : filePointer(nullptr), path_(""), fileDescriptor_(-1), fileSize_(0), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(nullptr) {}
+CacheReader::CacheReader() : path_(""), fileLoaded_(false), dummyHeader{0, 0, 0, 0}, header(&dummyHeader), shapes(nullptr) {}
 
 void CacheReader::printHeader() {
     if (fileLoaded_) {
@@ -33,28 +32,37 @@ int CacheReader::printShapes(void) {
 int CacheReader::loadFile(const std::string path) {
     unload();
     path_ = path;
-    fileDescriptor_ = open(path.c_str(), O_RDONLY);
 
-    if (fileDescriptor_ == -1) {
+    // open read-only backing file:
+    file_ = std::make_shared<mapped::file>();
+    if (file_->open(path.c_str())) {
         std::printf("error opening file\n");
         return 1;
     }
 
-    // get filesize
-    fileSize_ = lseek(fileDescriptor_, 0, SEEK_END);
-    lseek(fileDescriptor_, 0, SEEK_SET);
+    // map the header struct
+    header_ = std::make_unique<const mapped::struct_region<Header>>(file_, 0);
+    header = header_->get();
 
-    // memory map file
-    filePointer = (uint8_t*)mmap(NULL, fileSize_, PROT_READ, MAP_SHARED, fileDescriptor_, 0);
-    if (filePointer == MAP_FAILED) {
-        // error handling
-        std::printf("errorm mapping file memory");
-        close(fileDescriptor_);
-        return 2;
+    if (header->magic != MAGIC) {
+        std::printf("error opening file: file not recognized\n");
+        return 1;
     }
 
-    header = (Header*)(filePointer);
-    shapes = (ShapeEntry*)(filePointer + sizeof(Header));
+    // map the ShapeEntry array:
+    shapes_ = std::make_unique<const mapped::array_region<ShapeEntry>>(file_, header_->getEndSeek(), (*header_)->numShapes);
+    shapes = shapes_->get();
+
+    size_t datasize = 0;
+    for (unsigned int i = 0; i < header->numShapes; ++i) {
+        datasize += shapes[i].size;
+    }
+
+    // map rest of the file as XYZ data:
+    if (file_->size() != shapes_->getEndSeek() + datasize) {
+        std::printf("warn: file size does not match expected value\n");
+    }
+    xyz_ = std::make_unique<const mapped::array_region<XYZ>>(file_, shapes_->getEndSeek(), datasize);
 
     fileLoaded_ = true;
 
@@ -65,28 +73,34 @@ ShapeRange CacheReader::getCubesByShape(uint32_t i) {
     if (i >= header->numShapes) {
         return ShapeRange{nullptr, nullptr, 0, XYZ(0, 0, 0)};
     }
-    if(shapes[i].size <= 0) {
-        return ShapeRange(nullptr, nullptr, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+    if (shapes[i].size <= 0) {
+        return ShapeRange{nullptr, nullptr, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
     }
-    auto start = reinterpret_cast<const XYZ*>(filePointer + shapes[i].offset);
-    auto end = reinterpret_cast<const XYZ*>(filePointer + shapes[i].offset + shapes[i].size);
-    return ShapeRange(start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2));
+    // get section start
+    // note: shapes[i].offset may have bogus offset
+    // if any earlier shape table entry was empty before i
+    // so we ignore the offset here.
+    size_t offset = 0;
+    for (unsigned int k = 0; k < i; ++k) {
+        offset += shapes[k].size;
+    }
+    auto index = offset / XYZ_SIZE;
+    auto num_xyz = shapes[i].size / XYZ_SIZE;
+    // pointers to Cube data:
+    auto start = xyz_->get() + index;
+    auto end = xyz_->get() + index + num_xyz;
+    return ShapeRange{start, end, header->n, XYZ(shapes[i].dim0, shapes[i].dim1, shapes[i].dim2)};
 }
 
 void CacheReader::unload() {
-    // unmap file from memory
+    // unload file from memory
     if (fileLoaded_) {
-        if (munmap((void*)filePointer, fileSize_) == -1) {
-            // error handling
-            std::printf("error unmapping file\n");
-        }
-
-        // close file descriptor
-        close(fileDescriptor_);
+        xyz_.reset();
+        shapes_.reset();
+        header_.reset();
+        file_.reset();
         fileLoaded_ = false;
     }
-    fileDescriptor_ = -1;
-    filePointer = nullptr;
     header = &dummyHeader;
     shapes = nullptr;
 }

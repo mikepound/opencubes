@@ -6,6 +6,7 @@
 
 #include "cube.hpp"
 #include "hashes.hpp"
+#include "mapped_file.hpp"
 
 class Workset;
 
@@ -119,7 +120,10 @@ class CacheReader : public ICache {
         uint64_t size;     // in bytes should be multiple of XYZ_SIZE
     };
 
-    CubeIterator begin() {
+    // Do begin() and end() make sense for CacheReader
+    // If the cache file provides data for more than single shape?
+    // The data might not even be mapped contiguously to save memory.
+    /*CubeIterator begin() {
         const uint8_t* start = filePointer + shapes[0].offset;
         return CubeIterator(header->n, (const XYZ*)start);
     }
@@ -127,15 +131,18 @@ class CacheReader : public ICache {
     CubeIterator end() {
         const uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
         return CubeIterator(header->n, (const XYZ*)stop);
-    }
+    }*/
 
+    // get shapes at index [0, numShapes()[
     ShapeRange getCubesByShape(uint32_t i) override;
 
    private:
-    const uint8_t* filePointer;
+    std::shared_ptr<mapped::file> file_;
+    std::unique_ptr<const mapped::struct_region<Header>> header_;
+    std::unique_ptr<const mapped::array_region<ShapeEntry>> shapes_;
+    std::unique_ptr<const mapped::array_region<XYZ>> xyz_;
+
     std::string path_;
-    int fileDescriptor_;
-    uint64_t fileSize_;
     bool fileLoaded_;
     const Header dummyHeader;
     const Header* header;

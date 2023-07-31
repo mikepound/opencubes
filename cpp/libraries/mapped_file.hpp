@@ -113,7 +113,7 @@ class region {
     // non-const data access sets is_dirty.
     bool is_dirty = false;
 
-    void remap(const seekoff_t fpos, const len_t size);
+    void remap(const seekoff_t fpos, const len_t size, const len_t window);
 
    public:
     /**
@@ -121,6 +121,13 @@ class region {
      * @brief
      * Seeks at fpos in file and map size bytes
      * starting from that position in file.
+     * @param window
+     *  over-extend mapping up to max(size,window) bytes.
+     *  Setting window bigger than size allows more efficient operation:
+     *  [fpos, fpos + window] area is memory mapped
+     *  but region will only operate on the
+     *  [roundDown(fpos), roundup(fpos+size)]
+     *  sub-portion of the memory.
      * @note
      * - Seeking past the EOF in file that is read-only will fail.
      *   The mapped size may extend past EOF but accessing past EOF
@@ -136,7 +143,7 @@ class region {
      *  size() and getSeek().
      *  Side-effect is that backing file may grow more than expected.
      */
-    region(std::shared_ptr<file> src, seekoff_t fpos, len_t size);
+    region(std::shared_ptr<file> src, seekoff_t fpos, len_t size, len_t window = 0);
 
     /**
      * Open memory mapped region into the file
@@ -271,7 +278,7 @@ class struct_region : protected region {
     /**
      * Memory map struct_region<T> at fpos in file.
      */
-    struct_region(std::shared_ptr<file> f, seekoff_t fpos) : region(f, fpos, sizeof(type)) {}
+    struct_region(std::shared_ptr<file> f, seekoff_t fpos, len_t window = 0) : region(f, fpos, sizeof(type), window) {}
 
     type* get() { return static_cast<type*>(data()); }
     const type* get() const { return static_cast<const type*>(data()); }

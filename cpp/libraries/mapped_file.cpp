@@ -141,20 +141,21 @@ int file::truncate(seekoff_t newsize) {
  * Mapped region POSIX/Linux compatible implementation.
  */
 
-region::region(std::shared_ptr<file> src, seekoff_t fpos, len_t size) : mfile(src) {
+region::region(std::shared_ptr<file> src, seekoff_t fpos, len_t size, len_t window) : mfile(src) {
     std::lock_guard lock(mfile->mut);
-    remap(fpos, size);
+    remap(fpos, size, window);
 }
 
 region::region(std::shared_ptr<file> src) : mfile(src) {
     std::lock_guard lock(mfile->mut);
-    remap(0, mfile->size());
+    auto sz = mfile->size();
+    remap(0, sz, sz);
 }
 
 region::~region() {
     std::lock_guard lock(mfile->mut);
     map_fseek = 0;
-    remap(0, 0);
+    remap(0, 0, 0);
 }
 
 /**
@@ -166,7 +167,7 @@ region::~region() {
  *
  * In read-write mode the backing file is grown to fit the mapping.
  */
-void region::remap(const seekoff_t fpos, const len_t size) {
+void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
     if (fpos == usr_fseek && size == usr_size) return;  // No-op
     // check if [fpos, fpos+size] fits into the existing
     // mmap() window and only adjust the user region.
@@ -197,7 +198,7 @@ void region::remap(const seekoff_t fpos, const len_t size) {
     if (map_ptr && map_fseek == fpos) {
         // this mapping exists already at same map_fseek
         // remap it to grow the region.
-        auto newsize = roundUp(size);
+        auto newsize = roundUp(std::max(size, window));
         void* newptr = mremap(map_ptr, map_size, newsize, MREMAP_MAYMOVE);
         if (newptr == MAP_FAILED) {
             std::fprintf(stderr, "Error resizing memory-map of file:%s\n", std::strerror(errno));
@@ -212,7 +213,7 @@ void region::remap(const seekoff_t fpos, const len_t size) {
     // create new mapping
     if (mfile->is_rw()) {
         // RW mapping
-        auto newsize = roundUp(size);
+        auto newsize = roundUp(std::max(size, window));
         if (mfile->size() < fpos + newsize && mfile->truncate(fpos + newsize)) {
             // failed. Disk full?
             std::abort();
@@ -239,7 +240,7 @@ void region::remap(const seekoff_t fpos, const len_t size) {
             std::abort();
             return;
         }
-        map_size = roundUp(size);
+        map_size = roundUp(std::max(size, window));
         map_fseek = roundDown(fpos);
         // Map the region. (use huge pages, don't reserve backing store)
         map_ptr = mmap(0, map_size, PROT_READ, MAP_SHARED | MAP_NORESERVE | MAP_HUGE_2MB, mfile->fd, map_fseek);
@@ -257,14 +258,14 @@ void region::remap(const seekoff_t fpos, const len_t size) {
 
 void region::jump(seekoff_t fpos) {
     std::lock_guard lock(mfile->mut);
-    remap(fpos, map_size);
+    remap(fpos, usr_size, map_size);
     is_dirty = false;
 }
 
 void region::flushJump(seekoff_t fpos) {
     flush();
     std::lock_guard lock(mfile->mut);
-    remap(fpos, map_size);
+    remap(fpos, usr_size, map_size);
 }
 
 void region::flush() {
@@ -272,7 +273,11 @@ void region::flush() {
     std::lock_guard lock(mfile->mut);
     if (is_dirty && mfile->is_rw()) {
         is_dirty = false;
-        if (msync(map_ptr, map_size, MS_ASYNC)) {
+        auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
+        auto flush_len = roundUp(usr_size);
+        if(flush_begin < usr_ptr)
+            flush_len += PAGE_SIZE;
+        if (msync(flush_begin, flush_len, MS_ASYNC)) {
             std::fprintf(stderr, "Error flushing memory-map:%s\n", std::strerror(errno));
         }
     }
@@ -283,7 +288,11 @@ void region::sync() {
     std::lock_guard lock(mfile->mut);
     if (is_dirty && mfile->is_rw()) {
         is_dirty = false;
-        if (msync(map_ptr, map_size, MS_SYNC)) {
+        auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
+        auto flush_len = roundUp(usr_size);
+        if(flush_begin < usr_ptr)
+            flush_len += PAGE_SIZE;
+        if (msync(flush_begin, flush_len, MS_SYNC)) {
             std::fprintf(stderr, "Error flushing memory-map:%s\n", std::strerror(errno));
         }
     }

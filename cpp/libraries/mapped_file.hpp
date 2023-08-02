@@ -247,7 +247,7 @@ class region {
      *  Any data that falls out this window is read directly
      *  from the backing file.
      */
-    void readAt(seekoff_t fpos, len_t datasize, void* data);
+    void readAt(seekoff_t fpos, len_t datasize, void* data) const;
 
     /**
      * Set memory region to resident/or released.
@@ -452,9 +452,10 @@ class file : public std::enable_shared_from_this<file> {
 
    public:
     enum : int {
-        CREATE = 0x1,  // Create new file, if doesn't exist.
-        RESIZE = 0x2,  // Resize file.
-        RO = 0x4       // <reserved flag>
+        CREATE = 0x1,  //!< Create new file, if doesn't exist.
+        RESIZE = 0x2,  //!< Resize file.
+        FSTUNE = 0x4   //!< When creating new file attempt to set
+                       //!< file system attributes to improve performance.
     };
 
     file();

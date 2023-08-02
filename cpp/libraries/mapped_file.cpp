@@ -34,6 +34,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+
 #ifndef MAP_HUGE_2MB
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 #define MAP_HUGE_1GB (30 << MAP_HUGE_SHIFT)
@@ -107,6 +110,13 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
             return -1;
         }
         fd_rw = true;
+
+        if(flags & FSTUNE) {
+            int flags = 0;
+            ioctl(fd, FS_IOC_GETFLAGS, &flags);
+            flags |= FS_NOATIME_FL | FS_NOCOW_FL;
+            ioctl(fd, FS_IOC_SETFLAGS, &flags);
+        }
         return truncate(maxsize);
 
     } else if ((flags & RESIZE) != 0) {
@@ -334,7 +344,7 @@ void region::writeAt(seekoff_t fpos, len_t datasize, const void* data) {
     }
 }
 
-void region::readAt(seekoff_t fpos, len_t datasize, void* data) {
+void region::readAt(seekoff_t fpos, len_t datasize, void* data) const {
     auto dstmem = (char*)data;
 
     // does read fall out the mapped area begin?

@@ -100,7 +100,7 @@ struct Hashy {
         DEBUG_PRINTF("%ld maps by shape\n\r", byshape.size());
         for (auto &set : byshape) {
             auto part = set.second.size();
-            DEBUG_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
+            DEBUG1_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
             sum += part;
         }
         return sum;

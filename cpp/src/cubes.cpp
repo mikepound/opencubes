@@ -87,14 +87,14 @@ struct Workset {
         std::set_difference(candidates.begin(), end, c.begin(), c.end(), std::back_inserter(tmp));
         candidates = std::move(tmp);
 
-        DEBUG_PRINTF("candidates: %lu\n\r", candidates.size());
+        DEBUG1_PRINTF("candidates: %lu\n\r", candidates.size());
 
         Cube newCube(c.size() + 1);
         Cube lowestHashCube(newCube.size());
         Cube rotatedCube(newCube.size());
 
         for (const auto &p : candidates) {
-            DEBUG_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
+            DEBUG2_PRINTF("(%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
             int ax = (p.x() < 0) ? 1 : 0;
             int ay = (p.y() < 0) ? 1 : 0;
             int az = (p.z() < 0) ? 1 : 0;

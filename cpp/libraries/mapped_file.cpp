@@ -62,7 +62,7 @@ int file::open(const char* fname) {
 
     fd = ::open64(fname, O_RDONLY);
     if (fd == -1) {
-        //std::fprintf(stderr, "Error opening file for reading\n");
+        // std::fprintf(stderr, "Error opening file for reading\n");
         return -1;
     }
 
@@ -87,7 +87,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     if (!flags) {
         fd = ::open64(fname, O_RDWR | O_CLOEXEC);
         if (fd == -1) {
-            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            // std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
 
@@ -103,7 +103,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     } else if ((flags & (CREATE | RESIZE)) == (CREATE | RESIZE)) {
         fd = ::open64(fname, O_CREAT | O_RDWR | O_TRUNC | O_CLOEXEC, fperms);
         if (fd == -1) {
-            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            // std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
         fd_rw = true;
@@ -112,7 +112,7 @@ int file::openrw(const char* fname, size_t maxsize, int flags) {
     } else if ((flags & RESIZE) != 0) {
         fd = ::open64(fname, O_RDWR | O_CLOEXEC, fperms);
         if (fd == -1) {
-            //std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
+            // std::fprintf(stderr, "Error opening file:%s\n", std::strerror(errno));
             return -1;
         }
         fd_rw = true;
@@ -275,8 +275,7 @@ void region::flush() {
         is_dirty = false;
         auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
         auto flush_len = roundUp(usr_size);
-        if(flush_begin < usr_ptr)
-            flush_len += PAGE_SIZE;
+        if (flush_begin < usr_ptr) flush_len += PAGE_SIZE;
         if (msync(flush_begin, flush_len, MS_ASYNC)) {
             std::fprintf(stderr, "Error flushing memory-map:%s\n", std::strerror(errno));
         }
@@ -290,10 +289,80 @@ void region::sync() {
         is_dirty = false;
         auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
         auto flush_len = roundUp(usr_size);
-        if(flush_begin < usr_ptr)
-            flush_len += PAGE_SIZE;
+        if (flush_begin < usr_ptr) flush_len += PAGE_SIZE;
         if (msync(flush_begin, flush_len, MS_SYNC)) {
             std::fprintf(stderr, "Error flushing memory-map:%s\n", std::strerror(errno));
+        }
+    }
+}
+
+void region::writeAt(seekoff_t fpos, len_t datasize, const void* data) {
+    auto srcmem = (const char*)data;
+
+    std::lock_guard lock(mfile->mut);
+    if(mfile->size() < fpos+datasize && mfile->truncate(fpos+datasize)) {
+        return;
+    }
+
+    // does write fall out the mapped area begin?
+    if (fpos < map_fseek) {
+        // max size that can be written before map_fseek
+        ssize_t wr = std::min(map_fseek - fpos, datasize);
+        if (pwrite(mfile->fd, srcmem, wr, fpos) != wr) {
+            std::fprintf(stderr, "Error writing file:%s\n", std::strerror(errno));
+        }
+        srcmem += wr;
+        fpos += wr;
+        datasize -= wr;
+    }
+
+    if (fpos >= map_fseek && fpos < map_fseek + map_size && datasize) {
+        // max size that can be copied into this mapping:
+        ssize_t wr = std::min(map_size - (fpos - map_fseek), datasize);
+        std::memcpy((char*)map_ptr + (fpos - map_fseek), srcmem, wr);
+        srcmem += wr;
+        fpos += wr;
+        datasize -= wr;
+    }
+
+    // does write fall out the mapped area end?
+    if (datasize) {
+        // write into backing file after the mapped area:
+        if (pwrite(mfile->fd, srcmem, datasize, fpos) != ssize_t(datasize)) {
+            std::fprintf(stderr, "Error writing file:%s\n", std::strerror(errno));
+        }
+    }
+}
+
+void region::readAt(seekoff_t fpos, len_t datasize, void* data) {
+    auto dstmem = (char*)data;
+
+    // does read fall out the mapped area begin?
+    if (fpos < map_fseek) {
+        // max size that can be written before map_fseek
+        ssize_t rd = std::min(map_fseek - fpos, datasize);
+        if (pread(mfile->fd, dstmem, rd, fpos) != rd) {
+            std::fprintf(stderr, "Error reading file:%s\n", std::strerror(errno));
+        }
+        dstmem += rd;
+        fpos += rd;
+        datasize -= rd;
+    }
+
+    if (fpos >= map_fseek && fpos < map_fseek + map_size && datasize) {
+        // max size that can be copied from this mapping:
+        ssize_t rd = std::min(map_size - (fpos - map_fseek), datasize);
+        std::memcpy(dstmem, (char*)map_ptr + (fpos - map_fseek), rd);
+        dstmem += rd;
+        fpos += rd;
+        datasize -= rd;
+    }
+
+    // does read fall out the mapped area end?
+    if (datasize) {
+        // read from backing file after the mapped area:
+        if (pread(mfile->fd, dstmem, datasize, fpos) != ssize_t(datasize)) {
+            std::fprintf(stderr, "Error reading file:%s\n", std::strerror(errno));
         }
     }
 }

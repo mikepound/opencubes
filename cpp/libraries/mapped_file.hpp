@@ -200,17 +200,18 @@ class region {
     // todo: window(len_t virtsize)
     // since region() is already lying that it can map
     // non-page-aligned offsets and sizes
-    // window() would grow this over-aligned window
+    // window() would grow this over-extended the memory mapping
     // to arbitrary size and keep the initialized
     // user size.
-    // This allows remap() to just adjust the usr_ptr
-    // if the region window fits in.
 
     /**
      * Flush mapped memory region into the file.
      * @brief this is an hint to operating system that
      * memory region shall be synchronized to disk.
      * It may not wait for this to have completed before returning.
+     * @note only the page aligned region
+     * [roundDown(data()), roundUp(data()+size())]
+     * is flushed.
      * @note Use sync() instead if you must guarantee the data has
      * reached persistent storage.
      */
@@ -220,6 +221,33 @@ class region {
      * Synchronize modified memory region onto disk.
      */
     void sync();
+
+    /**
+     * Write data into the backing file.
+     * @brief
+     *  writeAt() stores range of bytes into the backing file.
+     * @note
+     *  The region doesn't need to have this area to be memory-mapped:
+     *  The data that falls into the memory-mapped
+     *  [regionSeek(), regionSeek()+regionSize()] area is simply memcpy'ed.
+     *  Any data that falls out this window is written directly
+     *  into the backing file.
+     *  The backing file is grown to fit the data when needed.
+     */
+    void writeAt(seekoff_t fpos, len_t datasize, const void* data);
+
+    /**
+     * Read data from the backing file.
+     * @brief
+     *  readAt() reads [fpos, fpos+datasize] range of bytes from the backing file
+     * @note
+     *  The region doesn't need to have this area memory-mapped
+     *  The read out area that falls into the memory-mapped
+     *  [regionSeek(), regionSeek()+regionSize()] area is simply memcpy'ed.
+     *  Any data that falls out this window is read directly
+     *  from the backing file.
+     */
+    void readAt(seekoff_t fpos, len_t datasize, void* data);
 
     /**
      * Set memory region to resident/or released.
@@ -292,7 +320,9 @@ class struct_region : protected region {
     using region::flush;
     using region::getFile;
     using region::getSeek;
+    using region::readAt;
     using region::sync;
+    using region::writeAt;
 
     // note: size means the sizeof(T)
     using region::size;
@@ -348,7 +378,9 @@ class array_region : protected region {
     using region::flush;
     using region::getFile;
     using region::getSeek;
+    using region::readAt;
     using region::sync;
+    using region::writeAt;
 
     /**
      * Resize the mapped array region.

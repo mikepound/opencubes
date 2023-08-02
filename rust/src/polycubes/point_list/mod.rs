@@ -210,12 +210,10 @@ impl<const N: usize> CubeMapPos<N> {
 
     fn is_continuous(&self, len: usize) -> bool {
         let start = self.cubes[0];
-        let mut polycube2 = [start; 32];
-        for i in 1..len {
-            polycube2[i] = self.cubes[i];
-        }
-        let polycube = polycube2;
-        //sets were actually slower even when no allocating
+        let mut polycube = [start; 32];
+        polycube[1..len].copy_from_slice(&self.cubes[1..len]);
+
+        // sets were actually slower even when no allocating
         let mut to_explore = [start; 32];
         let mut exp_head = 1;
         let mut exp_tail = 0;

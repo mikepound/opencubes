@@ -217,50 +217,50 @@ impl<const N: usize> CubeMapPos<N> {
         let mut to_explore = [start; 32];
         let mut exp_head = 1;
         let mut exp_tail = 0;
-        //to_explore[0] = start;
+
         while exp_head > exp_tail {
             let p = to_explore[exp_tail];
             exp_tail += 1;
+
             if p & 0x1f != 0 && !to_explore.contains(&(p - 1)) && polycube.contains(&(p - 1)) {
                 to_explore[exp_head] = p - 1;
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - 1;}
                 exp_head += 1;
             }
+
             if p & 0x1f != 0x1f && !to_explore.contains(&(p + 1)) && polycube.contains(&(p + 1)) {
                 to_explore[exp_head] = p + 1;
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + 1;}
                 exp_head += 1;
             }
+
             if (p >> 5) & 0x1f != 0
                 && !to_explore.contains(&(p - (1 << 5)))
                 && polycube.contains(&(p - (1 << 5)))
             {
                 to_explore[exp_head] = p - (1 << 5);
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 5);}
                 exp_head += 1;
             }
+
             if (p >> 5) & 0x1f != 0x1f
                 && !to_explore.contains(&(p + (1 << 5)))
                 && polycube.contains(&(p + (1 << 5)))
             {
                 to_explore[exp_head] = p + (1 << 5);
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 5);}
                 exp_head += 1;
             }
+
             if (p >> 10) & 0x1f != 0
                 && !to_explore.contains(&(p - (1 << 10)))
                 && polycube.contains(&(p - (1 << 10)))
             {
                 to_explore[exp_head] = p - (1 << 10);
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p - (1 << 10);}
                 exp_head += 1;
             }
+
             if (p >> 10) & 0x1f != 0x1f
                 && !to_explore.contains(&(p + (1 << 10)))
                 && polycube.contains(&(p + (1 << 10)))
             {
                 to_explore[exp_head] = p + (1 << 10);
-                // unsafe {*to_explore.get_unchecked_mut(exp_head) = p + (1 << 10);}
                 exp_head += 1;
             }
         }

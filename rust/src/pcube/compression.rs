@@ -1,6 +1,8 @@
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 
 use flate2::{read::GzDecoder, write::GzEncoder};
+
+const BUF_SIZE: usize = 1024 * 16384;
 
 /// Compression types supported for `.pcube` files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +47,7 @@ where
 {
     pub fn new(compression: Compression, reader: T) -> Self {
         match compression {
-            Compression::None => Self::Uncompressed(BufReader::new(reader)),
+            Compression::None => Self::Uncompressed(BufReader::with_capacity(BUF_SIZE, reader)),
             Compression::Gzip => Self::Gzip(GzDecoder::new(reader)),
         }
     }
@@ -74,7 +76,7 @@ pub enum Writer<T>
 where
     T: Write,
 {
-    Uncompressed(T),
+    Uncompressed(BufWriter<T>),
     Gzip(GzEncoder<T>),
 }
 
@@ -84,7 +86,7 @@ where
 {
     pub fn new(compression: Compression, writer: T) -> Self {
         match compression {
-            Compression::None => Self::Uncompressed(writer),
+            Compression::None => Self::Uncompressed(BufWriter::with_capacity(BUF_SIZE, writer)),
             Compression::Gzip => Self::Gzip(GzEncoder::new(writer, flate2::Compression::default())),
         }
     }

@@ -224,6 +224,8 @@ impl PCubeFile {
             return Err(e);
         }
 
+        writer.flush()?;
+
         Ok(())
     }
 

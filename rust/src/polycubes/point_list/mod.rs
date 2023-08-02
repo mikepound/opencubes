@@ -210,11 +210,11 @@ impl<const N: usize> CubeMapPos<N> {
 
     fn is_continuous(&self, len: usize) -> bool {
         let start = self.cubes[0];
-        let mut polycube = [start; 32];
+        let mut polycube = [start; N];
         polycube[1..len].copy_from_slice(&self.cubes[1..len]);
 
         // sets were actually slower even when no allocating
-        let mut to_explore = [start; 32];
+        let mut to_explore = [start; N];
         let mut exp_head = 1;
         let mut exp_tail = 0;
 
@@ -222,47 +222,29 @@ impl<const N: usize> CubeMapPos<N> {
             let p = to_explore[exp_tail];
             exp_tail += 1;
 
-            if p & 0x1f != 0 && !to_explore.contains(&(p - 1)) && polycube.contains(&(p - 1)) {
-                to_explore[exp_head] = p - 1;
-                exp_head += 1;
+            macro_rules! check {
+                ($([$check:ident, $shift:literal, $op:tt, $ignore_val:literal],)*) => {
+                    $(
+                        let value = (p $op (1 << $shift));
+                        if (p >> $shift) & 0x1F != $ignore_val
+                            && !to_explore.contains(&value)
+                            && polycube.contains(&value)
+                            {
+                                to_explore[exp_head] = value;
+                                exp_head += 1;
+                            }
+                    )*
+                };
             }
 
-            if p & 0x1f != 0x1f && !to_explore.contains(&(p + 1)) && polycube.contains(&(p + 1)) {
-                to_explore[exp_head] = p + 1;
-                exp_head += 1;
-            }
-
-            if (p >> 5) & 0x1f != 0
-                && !to_explore.contains(&(p - (1 << 5)))
-                && polycube.contains(&(p - (1 << 5)))
-            {
-                to_explore[exp_head] = p - (1 << 5);
-                exp_head += 1;
-            }
-
-            if (p >> 5) & 0x1f != 0x1f
-                && !to_explore.contains(&(p + (1 << 5)))
-                && polycube.contains(&(p + (1 << 5)))
-            {
-                to_explore[exp_head] = p + (1 << 5);
-                exp_head += 1;
-            }
-
-            if (p >> 10) & 0x1f != 0
-                && !to_explore.contains(&(p - (1 << 10)))
-                && polycube.contains(&(p - (1 << 10)))
-            {
-                to_explore[exp_head] = p - (1 << 10);
-                exp_head += 1;
-            }
-
-            if (p >> 10) & 0x1f != 0x1f
-                && !to_explore.contains(&(p + (1 << 10)))
-                && polycube.contains(&(p + (1 << 10)))
-            {
-                to_explore[exp_head] = p + (1 << 10);
-                exp_head += 1;
-            }
+            check!(
+                [x_min,  0,  -, 0],
+                [x_plus, 0,  +, 0x1f],
+                [y_min,  5,  -, 0],
+                [y_plus, 5,  +, 0x1f],
+                [z_min,  10, -, 0],
+                [z_plus, 10, +, 0x1f],
+            );
         }
         exp_head == len
     }

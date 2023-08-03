@@ -4,7 +4,12 @@ use opencubes::{
     hashless::MapStore,
     iterator::{indicatif::PolycubeProgressBarIter, *},
     pointlist,
-    rotation_reduced, polycubes::{pcube::{RawPCube, PCubeFile}, naive_polycube::NaivePolyCube, point_list::CubeMapPos},
+    polycubes::{
+        naive_polycube::NaivePolyCube,
+        pcube::{PCubeFile, RawPCube},
+        point_list::CubeMapPos,
+    },
+    rotation_reduced,
 };
 
 use crate::{finish_bar, make_bar, unknown_bar, Compression, EnumerateOpts, EnumerationMode};

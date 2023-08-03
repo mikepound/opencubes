@@ -1,9 +1,14 @@
-
 use std::{cmp::max, collections::HashSet, time::Instant};
 
 use indicatif::ProgressBar;
 
-use crate::polycubes::{rotation_reduced::{CubeMap, rotate::{self, MatrixCol, rot_matrix}}, point_list::CubeMapPos};
+use crate::polycubes::{
+    point_list::CubeMapPos,
+    rotation_reduced::{
+        rotate::{self, rot_matrix, MatrixCol},
+        CubeMap,
+    },
+};
 
 ///converts a cube map to  map pos for hashset storage slow (+10% runtime combined with decode last measured)
 fn cube_map_to_cube_map_pos(map: &CubeMap) -> CubeMapPos<16> {
@@ -60,10 +65,7 @@ fn cube_map_from_cube_map_pos(map: &CubeMapPos<16>) -> CubeMap {
 }
 
 #[inline]
-fn insert_map(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>
-) {
+fn insert_map(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
     let work_map = rotate::to_min_rot(map);
     let work_map = cube_map_to_cube_map_pos(&work_map);
     seen.insert(work_map);
@@ -166,28 +168,19 @@ fn expand_cube_map_out(map: &CubeMap, y: usize, z: usize, offset: u32) -> CubeMa
 
 /// expand each cube +/-1 X where possible
 #[inline]
-fn expand_xs(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>,
-) {
+fn expand_xs(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
     for yz in 0..(((map.y + 1) * (map.z + 1)) as usize) {
         let left_bits = ((map.cube_map[yz] << 1) | map.cube_map[yz]) ^ map.cube_map[yz];
         let right_bits = ((map.cube_map[yz] << 1) | map.cube_map[yz]) ^ (map.cube_map[yz] << 1);
         for xoff in 1..(map.x + 2) {
             //start at 1 because shifting left cant be in the zero bit
             if left_bits & (1 << xoff) != 0 {
-                insert_map(
-                    &expand_cube_map_left(map, yz, xoff),
-                    seen,
-                );
+                insert_map(&expand_cube_map_left(map, yz, xoff), seen);
             }
         }
         for xoff in 0..(map.x + 1) {
             if right_bits & (1 << xoff) != 0 {
-                insert_map(
-                    &expand_cube_map_right(map, yz, xoff),
-                    seen,
-                );
+                insert_map(&expand_cube_map_right(map, yz, xoff), seen);
             }
         }
     }
@@ -195,10 +188,7 @@ fn expand_xs(
 
 /// expand each cube +/-1 Y where possible
 #[inline]
-fn expand_ys(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>,
-) {
+fn expand_ys(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
     for z in 0..=map.z as usize {
         for y in 0..=map.y as usize {
             let up_bits = if y == map.y as usize {
@@ -216,16 +206,10 @@ fn expand_ys(
             for xoff in 0..=map.x {
                 //start at 1 because shifting left cant be in the zero bit
                 if up_bits & (1 << xoff) != 0 {
-                    insert_map(
-                        &expand_cube_map_up(map, y + 1, z, xoff),
-                        seen,
-                    );
+                    insert_map(&expand_cube_map_up(map, y + 1, z, xoff), seen);
                 }
                 if down_bits & (1 << xoff) != 0 {
-                    insert_map(
-                        &expand_cube_map_down(map, y, z, xoff),
-                        seen,
-                    );
+                    insert_map(&expand_cube_map_down(map, y, z, xoff), seen);
                 }
             }
         }
@@ -234,10 +218,7 @@ fn expand_ys(
 
 /// expand each cube +/-1 Z where possible
 #[inline]
-fn expand_zs(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>,
-) {
+fn expand_zs(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
     for z in 0..=map.z as usize {
         for y in 0..=map.y as usize {
             let in_bits = map.cube_map[z * (map.y as usize + 1) + y]
@@ -250,16 +231,10 @@ fn expand_zs(
             };
             for xoff in 0..(map.x + 1) {
                 if in_bits & (1 << xoff) != 0 {
-                    insert_map(
-                        &expand_cube_map_in(map, y, z + 1, xoff),
-                        seen,
-                    );
+                    insert_map(&expand_cube_map_in(map, y, z + 1, xoff), seen);
                 }
                 if out_bits & (1 << xoff) != 0 {
-                    insert_map(
-                        &expand_cube_map_out(map, y, z, xoff),
-                        seen,
-                    );
+                    insert_map(&expand_cube_map_out(map, y, z, xoff), seen);
                 }
             }
         }
@@ -268,38 +243,20 @@ fn expand_zs(
 
 /// expand in X, Y and Z abiding by the X >= Y >= Z constraint
 #[inline]
-fn do_cube_expansion(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>,
-) {
-    expand_xs(
-        map,
-        seen,
-    );
+fn do_cube_expansion(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
+    expand_xs(map, seen);
     if map.y < map.x {
-        expand_ys(
-            map,
-            seen,
-        );
+        expand_ys(map, seen);
     }
     if map.z < map.y {
-        expand_zs(
-            map,
-            seen,
-        );
+        expand_zs(map, seen);
     }
 }
 
 /// expand cube, rotate around square faces to catch adgecases that were getting missed due to the X >= Y >= Z constraint
 #[inline]
-fn expand_cube_map(
-    map: &CubeMap,
-    seen: &mut HashSet<CubeMapPos<16>>,
-) {
-    do_cube_expansion(
-        map,
-        seen,
-    );
+fn expand_cube_map(map: &CubeMap, seen: &mut HashSet<CubeMapPos<16>>) {
+    do_cube_expansion(map, seen);
     if map.x == map.y && map.x > 0 {
         let mut rot = CubeMap {
             x: map.x,
@@ -308,10 +265,7 @@ fn expand_cube_map(
             cube_map: [0; 36],
         };
         rot_matrix(map, &mut rot, MatrixCol::YN, MatrixCol::XN, MatrixCol::ZN);
-        do_cube_expansion(
-            &rot,
-            seen,
-        );
+        do_cube_expansion(&rot, seen);
     }
     if map.y == map.z && map.y > 0 {
         let mut rot = CubeMap {
@@ -321,10 +275,7 @@ fn expand_cube_map(
             cube_map: [0; 36],
         };
         rot_matrix(map, &mut rot, MatrixCol::XN, MatrixCol::ZP, MatrixCol::YP);
-        do_cube_expansion(
-            &rot,
-            seen,
-        );
+        do_cube_expansion(&rot, seen);
     }
     if map.x == map.z && map.x > 0 {
         let mut rot = CubeMap {
@@ -334,10 +285,7 @@ fn expand_cube_map(
             cube_map: [0; 36],
         };
         rot_matrix(map, &mut rot, MatrixCol::ZP, MatrixCol::YP, MatrixCol::XN);
-        do_cube_expansion(
-            &rot,
-            seen,
-        );
+        do_cube_expansion(&rot, seen);
     }
 }
 
@@ -350,10 +298,7 @@ fn expand_cube_set(
     let mut i = 0;
     for map in in_set.iter() {
         let map = &cube_map_from_cube_map_pos(map);
-        expand_cube_map(
-            map,
-            out_set,
-        );
+        expand_cube_map(map, out_set);
         i += 1;
         if i == 100 {
             bar.inc(100);
@@ -376,17 +321,10 @@ pub fn gen_polycubes(n: usize, bar: &ProgressBar) -> usize {
     let t1_start = Instant::now();
     let mut seeds = HashSet::new();
     let mut dst = HashSet::new();
-    insert_map(
-        &unit_cube,
-        &mut seeds,
-    );
+    insert_map(&unit_cube, &mut seeds);
     for i in 3..=n as usize {
         bar.set_message(format!("seed subsets expanded for N = {}...", i));
-        expand_cube_set(
-            &seeds,
-            &mut dst,
-            bar,
-        );
+        expand_cube_set(&seeds, &mut dst, bar);
         // panic if the returned values are wrong
         if i == 3 && dst.len() != 2 {
             panic!("{} supposed to have {} elems not {}", i, 2, dst.len())

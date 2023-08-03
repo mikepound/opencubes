@@ -1,10 +1,9 @@
-pub mod rotate;
 pub mod expand;
+pub mod rotate;
 
 use hashbrown::HashSet;
 
-use super::point_list::Dim;
-
+use super::Dim;
 
 //CubeRow is an integer type either u16 or u32 based on flags
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -39,7 +38,7 @@ impl CubeMap {
     pub fn get_block(&self, x: usize, y: usize, z: usize) -> u16 {
         (self.cube_map[z * (self.y as usize + 1) + y] >> x) & 1
     }
-    
+
     /// sets the block at xyz to exist
     pub fn set_block(&mut self, x: usize, y: usize, z: usize) {
         self.cube_map[z * (self.y as usize + 1) + y] |= 1 << x;

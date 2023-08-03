@@ -323,4 +323,3 @@ pub fn to_min_rot(map: &CubeMap) -> CubeMap {
     }
     res
 }
-

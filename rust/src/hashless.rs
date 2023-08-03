@@ -1,6 +1,6 @@
 use hashbrown::HashSet;
 
-use crate::polycubes::point_list::{CubeMapPos, Dim};
+use crate::polycubes::{point_list::{CubeMapPos, PointListMeta}, Dim, PolyCube};
 
 pub struct MapStore<const N: usize> {
     inner: HashSet<CubeMapPos<N>>,
@@ -39,9 +39,9 @@ impl<const N: usize> MapStore<N> {
 
         let seed = seed.to_min_rot_points(shape, count);
         let shape = seed.extrapolate_dim();
-
-        seed.expand(shape, count)
-            .for_each(|(dim, count, map)| store.insert_map(dim, map, count));
+        let meta = PointListMeta {point_list: seed, dim: shape, count: count};
+        meta.unique_expansions()
+            .for_each(|PointListMeta {point_list: map, dim, count}| store.insert_map(dim, map, count));
 
         store
             .inner

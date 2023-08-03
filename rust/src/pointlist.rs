@@ -2,7 +2,8 @@ use std::time::Instant;
 
 use crate::polycubes::{
     pcube::RawPCube,
-    point_list::{CubeMapPos, Dim},
+    point_list::{CubeMapPos, PointListMeta},
+    Dim,
 };
 
 use hashbrown::{HashMap, HashSet};
@@ -27,15 +28,15 @@ impl MapStore {
         }
     }
 
-    fn insert(&self, dim: Dim, map: CubeMapPos<16>, count: usize) {
-        let map = map.to_min_rot_points(dim, count);
+    fn insert(&self, plm: &PointListMeta<16>) {
+        let map = plm.point_list.to_min_rot_points(plm.dim, plm.count);
         let mut body = CubeMapPos::new();
 
-        body.cubes[0..count].copy_from_slice(&map.cubes[1..count + 1]);
+        body.cubes[0..plm.count].copy_from_slice(&map.cubes[1..plm.count + 1]);
 
         let entry = self
             .inner
-            .get(&(dim, map.cubes[0]))
+            .get(&(plm.dim, map.cubes[0]))
             .expect("Cube size does not have entry in destination map");
 
         entry.write().insert(body);
@@ -59,9 +60,12 @@ impl MapStore {
             }
 
             // body.cubes.copy_within(0..body.cubes.len() - 1, 1);
-
-            seed.expand(shape, count)
-                .for_each(|(dim, count, map)| self.insert(dim, map, count));
+            let seed_meta = PointListMeta {
+                point_list: seed,
+                dim: shape,
+                count,
+            };
+            seed_meta.expand().for_each(|plm| self.insert(&plm));
         }
     }
 
@@ -179,7 +183,12 @@ pub fn gen_polycubes(
                     .insert((dim, i as u16), RwLock::new(HashSet::new()));
             }
         }
-        seeds.insert(dim, seed, calculate_from - 1);
+        let seed_meta = PointListMeta {
+            point_list: seed,
+            dim,
+            count: calculate_from - 1,
+        };
+        seeds.insert(&seed_meta);
     }
     drop(current);
 

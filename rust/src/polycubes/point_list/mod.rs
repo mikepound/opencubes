@@ -342,93 +342,6 @@ impl<const N: usize> CubeMapPos<N> {
     }
 }
 
-macro_rules! cube_map_pos_expand {
-    ($name:ident, $dim:ident, $shift:literal) => {
-        #[inline(always)]
-        pub fn $name(self) -> impl Iterator<Item = Self> {
-            struct Iter<const C: usize> {
-                inner: PointListMeta<C>,
-                i: usize,
-                stored: Option<PointListMeta<C>>,
-            }
-
-            impl<'a, const C: usize> Iterator for Iter<C> {
-                type Item = PointListMeta<C>;
-
-                fn next(&mut self) -> Option<Self::Item> {
-                    loop {
-                        if let Some(stored) = self.stored.take() {
-                            return Some(stored);
-                        }
-
-                        let i = self.i;
-
-                        if i == self.inner.count {
-                            return None;
-                        }
-
-                        self.i += 1;
-                        let coord = *self.inner.point_list.cubes.get(i)?;
-
-                        let plus = coord + (1 << $shift);
-                        let minus = coord - (1 << $shift);
-
-                        if !self.inner.point_list.cubes[(i + 1)..self.inner.count].contains(&plus) {
-                            let mut new_shape = self.inner.dim;
-                            let mut new_map = self.inner.point_list;
-
-                            array_insert(plus, &mut new_map.cubes[i..=self.inner.count]);
-                            new_shape.$dim =
-                                max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
-
-                            self.stored = Some(PointListMeta {
-                                point_list: new_map,
-                                dim: new_shape,
-                                count: self.inner.count + 1,
-                            });
-                        }
-
-                        let mut new_map = self.inner.point_list;
-                        let mut new_shape = self.inner.dim;
-
-                        // If the coord is out of bounds for $dim, shift everything
-                        // over and create the cube at the out-of-bounds position.
-                        // If it is in bounds, check if the $dim - 1 value already
-                        // exists.
-                        let insert_coord = if (coord >> $shift) & 0x1f != 0 {
-                            if !self.inner.point_list.cubes[0..i].contains(&minus) {
-                                minus
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            new_shape.$dim += 1;
-                            for i in 0..self.inner.count {
-                                new_map.cubes[i] += 1 << $shift;
-                            }
-                            coord
-                        };
-
-                        array_shift(&mut new_map.cubes[i..=self.inner.count]);
-                        array_insert(insert_coord, &mut new_map.cubes[0..=i]);
-                        return Some(PointListMeta {
-                            point_list: new_map,
-                            dim: new_shape,
-                            count: self.inner.count + 1,
-                        });
-                    }
-                }
-            }
-
-            Iter {
-                inner: self,
-                i: 0,
-                stored: None,
-            }
-        }
-    };
-}
-
 #[derive(Copy, Clone)]
 pub struct PointListMeta<const N: usize> {
     pub point_list: CubeMapPos<N>,
@@ -436,24 +349,116 @@ pub struct PointListMeta<const N: usize> {
     pub count: usize,
 }
 
-impl<const N: usize> PointListMeta<N> {
-    cube_map_pos_expand!(expand_x, x, 0);
-    cube_map_pos_expand!(expand_y, y, 5);
-    cube_map_pos_expand!(expand_z, z, 10);
+macro_rules! plm_expand {
+    ($iter_name:ident, $name:ident, $dim:ident, $shift:literal) => {
+        pub struct $iter_name<const C: usize> {
+            inner: PointListMeta<C>,
+            i: usize,
+            stored: Option<PointListMeta<C>>,
+        }
 
+        impl<'a, const C: usize> Iterator for $iter_name<C> {
+            type Item = PointListMeta<C>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                loop {
+                    if let Some(stored) = self.stored.take() {
+                        return Some(stored);
+                    }
+
+                    let i = self.i;
+
+                    if i == self.inner.count {
+                        return None;
+                    }
+
+                    self.i += 1;
+                    let coord = *self.inner.point_list.cubes.get(i)?;
+
+                    let plus = coord + (1 << $shift);
+                    let minus = coord - (1 << $shift);
+
+                    if !self.inner.point_list.cubes[(i + 1)..self.inner.count].contains(&plus) {
+                        let mut new_shape = self.inner.dim;
+                        let mut new_map = self.inner.point_list;
+
+                        array_insert(plus, &mut new_map.cubes[i..=self.inner.count]);
+                        new_shape.$dim =
+                            max(new_shape.$dim, (((coord >> $shift) + 1) & 0x1f) as usize);
+
+                        self.stored = Some(PointListMeta {
+                            point_list: new_map,
+                            dim: new_shape,
+                            count: self.inner.count + 1,
+                        });
+                    }
+
+                    let mut new_map = self.inner.point_list;
+                    let mut new_shape = self.inner.dim;
+
+                    // If the coord is out of bounds for $dim, shift everything
+                    // over and create the cube at the out-of-bounds position.
+                    // If it is in bounds, check if the $dim - 1 value already
+                    // exists.
+                    let insert_coord = if (coord >> $shift) & 0x1f != 0 {
+                        if !self.inner.point_list.cubes[0..i].contains(&minus) {
+                            minus
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        new_shape.$dim += 1;
+                        for i in 0..self.inner.count {
+                            new_map.cubes[i] += 1 << $shift;
+                        }
+                        coord
+                    };
+
+                    array_shift(&mut new_map.cubes[i..=self.inner.count]);
+                    array_insert(insert_coord, &mut new_map.cubes[0..=i]);
+                    return Some(PointListMeta {
+                        point_list: new_map,
+                        dim: new_shape,
+                        count: self.inner.count + 1,
+                    });
+                }
+            }
+        }
+
+        impl<const N: usize> PointListMeta<N> {
+            #[inline(always)]
+            pub fn $name(self) -> $iter_name<N> {
+                $iter_name {
+                    inner: self,
+                    i: 0,
+                    stored: None,
+                }
+            }
+        }
+    };
+}
+
+plm_expand!(ExpandX, expand_x, x, 0);
+plm_expand!(ExpandY, expand_y, y, 5);
+plm_expand!(ExpandZ, expand_z, z, 10);
+
+pub type SubExpandIter<const N: usize> =
+    Chain<Chain<ExpandX<N>, Flatten<IntoIter<ExpandY<N>>>>, Flatten<IntoIter<ExpandZ<N>>>>;
+
+pub type ExpandIter<const N: usize> = Chain<
+    Chain<
+        Chain<Flatten<IntoIter<SubExpandIter<N>>>, Flatten<IntoIter<SubExpandIter<N>>>>,
+        Flatten<IntoIter<SubExpandIter<N>>>,
+    >,
+    SubExpandIter<N>,
+>;
+
+impl<const N: usize> PointListMeta<N> {
     /// reduce number of expansions needing to be performed based on
     /// X >= Y >= Z constraint on Dim
     #[inline]
     #[must_use]
-    fn do_expand(
-        self,
-    ) -> Chain<
-        Chain<
-            impl Iterator<Item = PointListMeta<N>>,
-            Flatten<IntoIter<impl Iterator<Item = PointListMeta<N>>>>,
-        >,
-        Flatten<IntoIter<impl Iterator<Item = PointListMeta<N>>>>,
-    > {
+    fn do_expand(self) -> SubExpandIter<N> {
         let expand_ys = if self.dim.y < self.dim.x {
             Some(self.expand_y())
         } else {
@@ -466,27 +471,32 @@ impl<const N: usize> PointListMeta<N> {
             None
         };
 
-        self.expand_x()
+        let inner = self
+            .expand_x()
             .chain(expand_ys.into_iter().flatten())
-            .chain(expand_zs.into_iter().flatten())
+            .chain(expand_zs.into_iter().flatten());
+
+        inner
     }
 
     /// perform the cube expansion for a given polycube
     /// if perform extra expansions for cases where the dimensions are equal as
     /// square sides may miss poly cubes otherwise
     #[inline]
-    pub fn expand(&self) -> impl Iterator<Item = Self> + '_ {
+    pub fn expand(&self) -> ExpandIter<N> {
         use MatrixCol::*;
 
         let z = if self.dim.x == self.dim.y && self.dim.x > 0 {
             let rotz = self
                 .point_list
                 .rot_matrix_points(self.dim, self.count, YN, XN, ZN, 1025);
+
             let rotz = PointListMeta {
                 point_list: rotz,
                 dim: self.dim,
                 count: self.count,
             };
+
             Some(rotz.do_expand())
         } else {
             None
@@ -496,11 +506,13 @@ impl<const N: usize> PointListMeta<N> {
             let rotx = self
                 .point_list
                 .rot_matrix_points(self.dim, self.count, XN, ZP, YP, 1025);
+
             let rotx = PointListMeta {
                 point_list: rotx,
                 dim: self.dim,
                 count: self.count,
             };
+
             Some(rotx.do_expand())
         } else {
             None
@@ -510,11 +522,13 @@ impl<const N: usize> PointListMeta<N> {
             let roty = self
                 .point_list
                 .rot_matrix_points(self.dim, self.count, ZP, YP, XN, 1025);
+
             let roty = PointListMeta {
                 point_list: roty,
                 dim: self.dim,
                 count: self.count,
             };
+
             Some(roty.do_expand())
         } else {
             None
@@ -572,7 +586,9 @@ impl<const N: usize> PolyCube for PointListMeta<N> {
         self.dim
     }
 
-    fn unique_expansions<'a>(&'a self) -> Box<dyn Iterator<Item = Self> + 'a> {
-        Box::new(self.expand())
+    type UniqueExpansionsIterator = ExpandIter<N>;
+
+    fn unique_expansions(&self) -> Self::UniqueExpansionsIterator {
+        self.expand()
     }
 }

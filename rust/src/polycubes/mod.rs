@@ -21,9 +21,11 @@ pub struct Dim {
 }
 
 pub trait PolyCube: From<RawPCube> + Into<RawPCube> + Sized {
+    type UniqueExpansionsIterator: Iterator<Item = Self>;
+
     /// Produce an iterator that yields all unique n + 1 expansions of
     /// `input`.
-    fn unique_expansions<'a>(&'a self) -> Box<dyn Iterator<Item = Self> + 'a>;
+    fn unique_expansions(&self) -> Self::UniqueExpansionsIterator;
 
     /// Return a copy of self in some "canonical" form.
     fn canonical_form(&self) -> Self;

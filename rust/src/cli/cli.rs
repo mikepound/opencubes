@@ -224,23 +224,6 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let in_memory = !opts.no_in_memory;
     let n = opts.n;
 
-    println!("Validating {}", path);
-
-    let mut uniqueness = match (in_memory, uniqueness) {
-        (true, true) => {
-            eprintln!("Verifying uniqueness.");
-            Some(HashSet::new())
-        }
-        (false, true) => {
-            println!("Cannot verify uniqueness without placing all entries in memory. Re-run with `--no-uniqueness` enabled to run.");
-            std::process::exit(1);
-        }
-        (_, false) => {
-            eprintln!("Not verifying uniqueness");
-            None
-        }
-    };
-
     let file = PCubeFile::new_file(path)?;
     let canonical = file.canonical();
     let len = file.len();
@@ -248,7 +231,27 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let bar = if let Some(len) = len {
         make_bar(len as u64)
     } else {
-        unknown_bar()
+        unknown_bar_with_pos(true)
+    };
+
+    bar.set_message("cubes validated");
+
+    bar.println(format!("Validating {}", path));
+
+    let mut uniqueness = match (in_memory, uniqueness) {
+        (true, true) => {
+            bar.println("Verifying uniqueness.");
+            Some(HashSet::new())
+        }
+        (false, true) => {
+            bar.abandon();
+            println!("Cannot verify uniqueness without placing all entries in memory. Re-run with `--no-uniqueness` enabled to run.");
+            std::process::exit(1);
+        }
+        (_, false) => {
+            bar.println("Not verifying uniqueness");
+            None
+        }
     };
 
     let exit = |msg: &str| {
@@ -258,20 +261,17 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     };
 
     match (canonical, validate_canonical) {
-        (true, true) => eprintln!("Verifying entry canonicality. File indicates that entries are canonical."),
-        (false, true) => eprintln!("Not verifying entry canonicality. File header does not indicate that entries are canonical"),
-        (true, false) => eprintln!("Not verifying entry canonicality. File header indicates that they are, but check is disabled."),
-        (false, false) => eprintln!("Not verifying canonicality. File header does not indicate that entries are canonical, and check is disabled.")
+        (true, true) => bar.println("Verifying entry canonicality. File indicates that entries are canonical."),
+        (false, true) => bar.println("Not verifying entry canonicality. File header does not indicate that entries are canonical"),
+        (true, false) => bar.println("Not verifying entry canonicality. File header indicates that they are, but check is disabled."),
+        (false, false) => bar.println("Not verifying canonicality. File header does not indicate that entries are canonical, and check is disabled.")
     }
 
     if let Some(n) = n {
-        eprintln!("Verifying that all entries are N = {n}");
+        bar.println(format!("Verifying that all entries are N = {n}"));
     }
 
     let mut total_read = 0;
-
-    let mut last_tick = Instant::now();
-    bar.tick();
 
     for cube in file {
         let cube = match cube {
@@ -284,14 +284,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
         total_read += 1;
 
-        if len.is_some() {
-            bar.inc(1);
-        } else if last_tick.elapsed() >= Duration::from_millis(66) {
-            last_tick = Instant::now();
-            bar.set_message(format!("{total_read}"));
-            bar.inc(1);
-            bar.tick();
-        }
+        bar.inc(1);
 
         let mut form: Option<NaivePolyCube> = None;
         let canonical_form = || cube.pcube_canonical_form();
@@ -317,9 +310,9 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
                 exit("Found non-unique polycubes.");
             }
         }
-
-        bar.finish();
     }
+
+    bar.finish();
 
     println!("Success: {path}, containing {total_read} cubes, is valid");
 

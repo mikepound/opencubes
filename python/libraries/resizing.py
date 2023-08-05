@@ -15,11 +15,12 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
     np.array: Cropped 3D Numpy byte array equivalent to cube, but with no zero padding
 
     """
-    nonzero_indices = np.where(cube != 0)
-    cropped_cube = cube[np.min(nonzero_indices[0]):np.max(nonzero_indices[0]) + 1,
-                         np.min(nonzero_indices[1]):np.max(nonzero_indices[1]) + 1,
-                         np.min(nonzero_indices[2]):np.max(nonzero_indices[2]) + 1]
-    return cropped_cube
+    for i in range(cube.ndim):
+        cube = np.swapaxes(cube, 0, i)
+        nonzero_indices = np.any(cube != 0, axis=tuple(range(1, cube.ndim)))
+        cube = cube[nonzero_indices]
+        cube = np.swapaxes(cube, 0, i)
+    return cube
 
 
 def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:

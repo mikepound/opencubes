@@ -1,15 +1,12 @@
 use std::{
     collections::{BTreeMap, HashSet},
     path::PathBuf,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use indicatif::{MultiProgress, ProgressBar, ProgressIterator, ProgressStyle};
-use opencubes::{
-    naive_polycube::NaivePolyCube,
-    pcube::{PCubeFile, RawPCube},
-};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
 
 mod enumerate;
 use enumerate::enumerate;
@@ -167,13 +164,6 @@ pub struct ConvertArgs {
     /// the conversion is complete.
     #[clap(short, long)]
     pub output_path: Option<String>,
-
-    /// Count the cubes in stream-oriented files before writing the converted file.
-    ///
-    /// Counting requires 2 passes for the conversion to be completed, which
-    /// can be slow.
-    #[clap(long, short = 'n')]
-    pub count: bool,
 }
 
 #[derive(Clone, Args)]
@@ -371,38 +361,20 @@ pub fn convert(opts: &ConvertArgs) {
             let bar = if let Some(len) = len {
                 make_bar(len as u64)
             } else {
-                unknown_bar()
+                unknown_bar_with_pos(true)
             };
 
             let bar = multi_bar.add(bar);
 
-            (input_file, path, output_path, len, bar)
+            (input_file, path, output_path, bar)
         })
         .collect();
 
     // Convert, in parallel
     files
         .into_par_iter()
-        .for_each(|(input_file, path, output_path, len, bar)| {
-            let len = if opts.count && len.is_none() {
-                let bar = unknown_bar_with_pos(true);
-                let counting_bar = multi_bar.add(bar);
-                counting_bar.set_message(format!("polycubes counted in {path}"));
-
-                let with_progress = PCubeFile::new_file(&path)
-                    .unwrap()
-                    .progress_with(counting_bar.clone());
-
-                let output = Some(with_progress.count());
-
-                counting_bar.finish_and_clear();
-
-                output
-            } else {
-                input_file.len()
-            };
-
-            bar.set_message(path.to_string());
+        .for_each(|(input_file, path, output_path, bar)| {
+            bar.set_message(format!("cubes converted for {path}"));
 
             let canonical = input_file.canonical();
             let mut output_path_temp = PathBuf::from(&output_path);
@@ -412,36 +384,7 @@ pub fn convert(opts: &ConvertArgs) {
             output_path_temp.pop();
             output_path_temp.push(filename);
 
-            let mut total_read = 0;
-            let mut last_tick = Instant::now();
-
-            struct InputIter<I> {
-                inner: I,
-                len: Option<usize>,
-            }
-
-            impl<I> Iterator for InputIter<I>
-            where
-                I: Iterator<Item = RawPCube>,
-            {
-                type Item = RawPCube;
-
-                fn next(&mut self) -> Option<Self::Item> {
-                    self.inner.next()
-                }
-
-                fn size_hint(&self) -> (usize, Option<usize>) {
-                    if let Some(len) = self.len {
-                        (len, Some(len))
-                    } else {
-                        (0, None)
-                    }
-                }
-            }
-
             let input = input_file.filter_map(|v| {
-                total_read += 1;
-
                 let cube = match v {
                     Ok(v) => Some(v),
                     Err(e) => {
@@ -451,14 +394,7 @@ pub fn convert(opts: &ConvertArgs) {
                     }
                 }?;
 
-                if len.is_some() {
-                    bar.inc(1);
-                } else if last_tick.elapsed() >= Duration::from_millis(66) {
-                    last_tick = Instant::now();
-                    bar.set_message(format!("{total_read}"));
-                    bar.inc(1);
-                    bar.tick();
-                }
+                bar.inc(1);
 
                 if opts.canonicalize {
                     Some(NaivePolyCube::from(cube).canonical_form().into())
@@ -467,7 +403,6 @@ pub fn convert(opts: &ConvertArgs) {
                 }
             });
 
-            let input = InputIter { inner: input, len };
             let canonical = canonical || opts.canonicalize;
 
             match PCubeFile::write_file(
@@ -485,7 +420,7 @@ pub fn convert(opts: &ConvertArgs) {
 
             if !bar.is_finished() {
                 match std::fs::rename(output_path_temp, output_path) {
-                    Ok(_) => bar.finish_with_message(format!("{path} Done!")),
+                    Ok(_) => bar.finish(),
                     Err(e) => {
                         bar.abandon_with_message(format!("{path} Failed to write final file: {e}"));
                         return;

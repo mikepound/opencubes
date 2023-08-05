@@ -1,306 +1,173 @@
-use std::{cmp::max, time::Instant};
+use std::time::Instant;
 
-use crate::{
-    polycube_reps::{CubeMapPos, CubeMapPosPart, Dim},
-    rotations::{rot_matrix_points, to_min_rot_points, MatrixCol},
+use crate::polycubes::{
+    pcube::RawPCube,
+    point_list::{CubeMapPos, PointListMeta},
+    Dim,
 };
 
-use crate::pcube::RawPCube;
 use hashbrown::{HashMap, HashSet};
 use indicatif::ProgressBar;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
-///structure to store the polycubes
-/// stores the key and fist block index as a key
-/// to the set of 15 block tails that correspond to that shape and start
-/// used for reducing mutex preasure on insertion
-/// used as buckets for parallelising
-/// however both of these give suboptomal performance due to the uneven distribution
-type MapStore = HashMap<(Dim, u16), RwLock<HashSet<CubeMapPosPart>>>;
-
-/// helper function to not duplicate code for canonicalising polycubes
-/// and storing them in the hashset
-fn insert_map(store: &MapStore, dim: &Dim, map: &CubeMapPos<16>, count: usize) {
-    let map = to_min_rot_points(map, dim, count);
-    let mut body = CubeMapPosPart { cubes: [0; 15] };
-    for i in 1..count {
-        body.cubes[i - 1] = map.cubes[i];
-    }
-    match store.get(&(*dim, map.cubes[0])) {
-        Some(map) => {
-            map.write().insert(body);
-        }
-        None => {
-            panic!(
-                "shape {:?} data {} {:?} count {}",
-                dim, map.cubes[0], body, count
-            );
-        }
-    }
+/// Structure to store sets of polycubes
+pub struct MapStore {
+    /// Stores the shape and fist block index as a key
+    /// to the set of 15 block tails that correspond to that shape and start.
+    /// used for reducing rwlock pressure on insertion
+    /// used as buckets for parallelising
+    /// however both of these give suboptomal performance due to the uneven distribution
+    inner: HashMap<(Dim, u16), RwLock<HashSet<CubeMapPos<15>>>>,
 }
 
-///linearly scan backwards to insertion point overwrites end of slice
-#[inline]
-pub fn array_insert(val: u16, arr: &mut [u16]) {
-    for i in 1..(arr.len()) {
-        if arr[arr.len() - 1 - i] > val {
-            arr[arr.len() - i] = arr[arr.len() - 1 - i];
-        } else {
-            arr[arr.len() - i] = val;
+impl MapStore {
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+
+    fn insert(&self, plm: &PointListMeta<16>) {
+        let map = &plm.point_list;
+        let dim = plm.dim;
+        let count = plm.count;
+
+        // Check if we don't already happen to be in the minimum rotation position.
+        let mut body_maybemin = CubeMapPos::new();
+        body_maybemin.cubes[0..count].copy_from_slice(&map.cubes[1..count + 1]);
+        let dim_maybe = map.extrapolate_dim();
+
+        // Weirdly enough, doing the copy and doing the lookup check this
+        // way is faster than only copying if `inner` has en entry for
+        // dim_maybe.
+        if self
+            .inner
+            .get(&(dim_maybe, map.cubes[0]))
+            .map(|v| v.read().contains(&body_maybemin))
+            == Some(true)
+        {
             return;
         }
+
+        let map = map.to_min_rot_points(dim, count);
+
+        let mut body = CubeMapPos::new();
+        body.cubes[0..count].copy_from_slice(&map.cubes[1..count + 1]);
+
+        let entry = self
+            .inner
+            .get(&(plm.dim, map.cubes[0]))
+            .expect("Cube size does not have entry in destination map");
+
+        entry.write().insert(body);
     }
-    arr[0] = val;
-}
 
-/// moves contents of slice to index x+1, x==0 remains
-#[inline]
-pub fn array_shift(arr: &mut [u16]) {
-    for i in 1..(arr.len()) {
-        arr[arr.len() - i] = arr[arr.len() - 1 - i];
-    }
-}
+    /// helper for inner_exp in expand_cube_set it didnt like going directly in the closure
+    fn expand_cube_sub_set(
+        &self,
+        shape: Dim,
+        first_cube: u16,
+        body: impl Iterator<Item = CubeMapPos<15>>,
+        count: usize,
+    ) {
+        let mut seed = CubeMapPos {
+            cubes: [first_cube, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
 
-/// try expaning each cube into both x+1 and x-1, calculating new dimension
-/// and ensuring x is never negative
-#[inline]
-fn expand_xs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
-    for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-        if !seed.cubes[(i + 1)..count].contains(&(coord + 1)) {
-            let mut new_shape = *shape;
-            let mut exp_map = *seed;
-
-            array_insert(coord + 1, &mut exp_map.cubes[i..=count]);
-            new_shape.x = max(new_shape.x, ((coord + 1) & 0x1f) as usize);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
-        }
-        if coord & 0x1f != 0 {
-            if !seed.cubes[0..i].contains(&(coord - 1)) {
-                let mut exp_map = *seed;
-                //faster move of top half hopefully
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(coord - 1, &mut exp_map.cubes[0..=i]);
-                insert_map(dst, shape, &exp_map, count + 1)
+        for seed_body in body {
+            for i in 1..count {
+                seed.cubes[i] = seed_body.cubes[i - 1];
             }
-        } else {
-            let mut new_shape = *shape;
-            new_shape.x += 1;
-            let mut exp_map = *seed;
-            for i in 0..count {
-                exp_map.cubes[i] += 1;
-            }
-            array_shift(&mut exp_map.cubes[i..=count]);
-            array_insert(*coord, &mut exp_map.cubes[0..=i]);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
+
+            // body.cubes.copy_within(0..body.cubes.len() - 1, 1);
+            let seed_meta = PointListMeta {
+                point_list: seed,
+                dim: shape,
+                count,
+            };
+            seed_meta.expand().for_each(|plm| self.insert(&plm));
         }
     }
-}
 
-/// try expaning each cube into both y+1 and y-1, calculating new dimension
-/// and ensuring y is never negative
-#[inline]
-fn expand_ys(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
-    for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-        if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 5))) {
-            let mut new_shape = *shape;
-            let mut exp_map = *seed;
-            array_insert(coord + (1 << 5), &mut exp_map.cubes[i..=count]);
-            new_shape.y = max(new_shape.y, (((coord >> 5) + 1) & 0x1f) as usize);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
-        }
-        if (coord >> 5) & 0x1f != 0 {
-            if !seed.cubes[0..i].contains(&(coord - (1 << 5))) {
-                let mut exp_map = *seed;
-                //faster move of top half hopefully
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(coord - (1 << 5), &mut exp_map.cubes[0..=i]);
-                insert_map(dst, shape, &exp_map, count + 1)
-            }
-        } else {
-            let mut new_shape = *shape;
-            new_shape.y += 1;
-            let mut exp_map = *seed;
-            for i in 0..count {
-                exp_map.cubes[i] += 1 << 5;
-            }
-            array_shift(&mut exp_map.cubes[i..=count]);
-            array_insert(*coord, &mut exp_map.cubes[0..=i]);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
-        }
-    }
-}
-
-/// try expaning each cube into both z+1 and z-1, calculating new dimension
-/// and ensuring z is never negative
-#[inline]
-fn expand_zs(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
-    for (i, coord) in seed.cubes[0..count].iter().enumerate() {
-        if !seed.cubes[(i + 1)..count].contains(&(coord + (1 << 10))) {
-            let mut new_shape = *shape;
-            let mut exp_map = *seed;
-            array_insert(coord + (1 << 10), &mut exp_map.cubes[i..=count]);
-            new_shape.z = max(new_shape.z, (((coord >> 10) + 1) & 0x1f) as usize);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
-        }
-        if (coord >> 10) & 0x1f != 0 {
-            if !seed.cubes[0..i].contains(&(coord - (1 << 10))) {
-                let mut exp_map = *seed;
-                //faster move of top half hopefully
-                array_shift(&mut exp_map.cubes[i..=count]);
-                array_insert(coord - (1 << 10), &mut exp_map.cubes[0..=i]);
-                insert_map(dst, shape, &exp_map, count + 1)
-            }
-        } else {
-            let mut new_shape = *shape;
-            new_shape.z += 1;
-            let mut exp_map = *seed;
-            for i in 0..count {
-                exp_map.cubes[i] += 1 << 10;
-            }
-            array_shift(&mut exp_map.cubes[i..=count]);
-            array_insert(*coord, &mut exp_map.cubes[0..=i]);
-            insert_map(dst, &new_shape, &exp_map, count + 1)
-        }
-    }
-}
-
-/// reduce number of expansions needing to be performed based on
-/// X >= Y >= Z constraint on Dim
-#[inline]
-fn do_cube_expansion(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
-    if shape.y < shape.x {
-        expand_ys(dst, seed, shape, count);
-    }
-    if shape.z < shape.y {
-        expand_zs(dst, seed, shape, count);
-    }
-    expand_xs(dst, seed, shape, count);
-}
-
-/// perform the cube expansion for a given polycube
-/// if perform extra expansions for cases where the dimensions are equal as
-/// square sides may miss poly cubes otherwise
-#[inline]
-fn expand_cube_map(dst: &MapStore, seed: &CubeMapPos<16>, shape: &Dim, count: usize) {
-    if shape.x == shape.y && shape.x > 0 {
-        let rotz = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::YN,
-            MatrixCol::XN,
-            MatrixCol::ZN,
-            1025,
-        );
-        do_cube_expansion(dst, &rotz, shape, count);
-    }
-    if shape.y == shape.z && shape.y > 0 {
-        let rotx = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::XN,
-            MatrixCol::ZP,
-            MatrixCol::YP,
-            1025,
-        );
-        do_cube_expansion(dst, &rotx, shape, count);
-    }
-    if shape.x == shape.z && shape.x > 0 {
-        let roty = rot_matrix_points(
-            seed,
-            shape,
-            count,
-            MatrixCol::ZP,
-            MatrixCol::YP,
-            MatrixCol::XN,
-            1025,
-        );
-        do_cube_expansion(dst, &roty, shape, count);
-    }
-    do_cube_expansion(dst, seed, shape, count);
-}
-
-/// helper for inner_exp in expand_cube_set it didnt like going directly in the closure
-fn expand_cube_sub_set(
-    (shape, start): &(Dim, u16),
-    body: &RwLock<HashSet<CubeMapPosPart>>,
-    count: usize,
-    dst: &MapStore,
-) {
-    let mut seed = CubeMapPos {
-        cubes: [*start, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    };
-    for seed_body in body.read().iter() {
-        for i in 1..count {
-            seed.cubes[i] = seed_body.cubes[i - 1];
-        }
-        expand_cube_map(dst, &seed, &shape, count);
-    }
-}
-
-fn expand_cube_set(
-    seeds: &MapStore,
-    count: usize,
-    dst: &mut MapStore,
-    bar: &ProgressBar,
-    parallel: bool,
-) {
-    // set up the dst sets before starting parallel processing so accessing doesnt block a global mutex
-    for x in 0..=count + 1 {
-        for y in 0..=(count + 1) / 2 {
-            for z in 0..=(count + 1) / 3 {
-                for i in 0..(y + 1) * 32 {
-                    dst.insert((Dim { x, y, z }, i as u16), RwLock::new(HashSet::new()));
+    fn expand_cube_set(self, count: usize, dst: &mut MapStore, bar: &ProgressBar, parallel: bool) {
+        // set up the dst sets before starting parallel processing so accessing doesnt block a global mutex
+        for x in 0..=count + 1 {
+            for y in 0..=(count + 1) / 2 {
+                for z in 0..=(count + 1) / 3 {
+                    for i in 0..(y + 1) * 32 {
+                        dst.inner
+                            .insert((Dim { x, y, z }, i as u16), RwLock::new(HashSet::new()));
+                    }
                 }
             }
         }
+
+        bar.set_position(0);
+        bar.set_length(self.inner.len() as u64);
+        bar.set_message(format!("seed subsets expanded for N = {}...", count + 1));
+
+        let inner_exp = |((shape, first_cube), body): (_, RwLock<HashSet<_>>)| {
+            dst.expand_cube_sub_set(shape, first_cube, body.into_inner().into_iter(), count);
+            bar.inc(1);
+        };
+
+        // Use parallel iterator or not to run expand_cube_set
+        if parallel {
+            self.inner.into_par_iter().for_each(inner_exp);
+        } else {
+            self.inner.into_iter().for_each(inner_exp);
+        }
+
+        //retain only subsets that have polycubes
+        dst.inner.retain(|_, v| v.read().len() > 0);
     }
 
-    bar.set_message(format!("seed subsets expanded for N = {}...", count + 1));
+    /// Count the number of polycubes across all subsets
+    fn count_polycubes(&self) -> usize {
+        let mut total = 0;
+        #[cfg(feature = "diagnostics")]
+        for ((d, s), body) in maps.iter().rev() {
+            println!(
+                "({}, {}, {}) {} _> {}",
+                d.x + 1,
+                d.y + 1,
+                d.z + 1,
+                s,
+                body.len()
+            );
+        }
+        for (_, body) in self.inner.iter() {
+            total += body.read().len()
+        }
 
-    let inner_exp = |(ss, body)| {
-        expand_cube_sub_set(ss, body, count, dst);
-        bar.inc(1);
-    };
-
-    //use parallel iterator or not to run expand_cube_set
-    if parallel {
-        seeds.par_iter().for_each(inner_exp);
-    } else {
-        seeds.iter().for_each(inner_exp);
+        total
     }
-    //retain only subsets that have polycubes
-    dst.retain(|_, v| v.read().len() > 0);
-}
 
-/// count the number of polycubes across all subsets
-fn count_polycubes(maps: &MapStore) -> usize {
-    let mut total = 0;
-    #[cfg(feature = "diagnostics")]
-    for ((d, s), body) in maps.iter().rev() {
-        println!(
-            "({}, {}, {}) {} _> {}",
-            d.x + 1,
-            d.y + 1,
-            d.z + 1,
-            s,
-            body.len()
-        );
-    }
-    for (_, body) in maps.iter() {
-        total += body.read().len()
-    }
-    total
-}
+    /// Destructively move the data from hashset to vector
+    pub fn into_vec(self) -> Vec<CubeMapPos<16>> {
+        let mut v = Vec::with_capacity(self.count_polycubes());
 
-/// distructively move the data from hashset to vector
-fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
-    let mut v = Vec::new();
-    while let Some(((dim, head), body)) = maps.iter().next() {
-        //extra scope to free lock and make borrow checker allow mutation of maps
-        {
+        for ((_, head), body) in self.inner.into_iter() {
+            let bod = body.read();
+            let mut cmp = CubeMapPos::new();
+            cmp.cubes[0] = head;
+            for b in bod.iter() {
+                for i in 0..15 {
+                    cmp.cubes[i + 1] = b.cubes[i];
+                }
+                v.push(cmp);
+            }
+        }
+
+        v
+    }
+
+    /// Copy the data from hashset to vector
+    pub fn to_vec(&self) -> Vec<CubeMapPos<16>> {
+        let mut v = Vec::with_capacity(self.count_polycubes());
+
+        for ((_, head), body) in self.inner.iter() {
             let bod = body.read();
             let mut cmp = CubeMapPos::new();
             cmp.cubes[0] = *head;
@@ -311,32 +178,9 @@ fn move_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
                 v.push(cmp);
             }
         }
-        let dim = *dim;
-        let head = *head;
-        maps.remove(&(dim, head));
-    }
-    v
-}
 
-/// distructively move the data from hashset to vector
-fn _clone_polycubes_to_vec(maps: &mut MapStore) -> Vec<CubeMapPos<16>> {
-    let mut v = Vec::new();
-
-    for ((_, head), body) in maps.iter() {
-        //extra scope to free lock and make borrow checker allow mutation of maps
-        {
-            let bod = body.read();
-            let mut cmp = CubeMapPos::new();
-            cmp.cubes[0] = *head;
-            for b in bod.iter() {
-                for i in 0..15 {
-                    cmp.cubes[i + 1] = b.cubes[i];
-                }
-                v.push(cmp);
-            }
-        }
+        v
     }
-    v
 }
 
 /// run pointlist based generation algorithm
@@ -355,66 +199,39 @@ pub fn gen_polycubes(
     for seed in current.iter() {
         let seed: CubeMapPos<16> = seed.into();
         let dim = seed.extrapolate_dim();
-        if !seeds.contains_key(&(dim, seed.cubes[0])) {
+        if !seeds.inner.contains_key(&(dim, seed.cubes[0])) {
             for i in 0..(dim.y * 32 + dim.x + 1) {
-                seeds.insert((dim, i as u16), RwLock::new(HashSet::new()));
+                seeds
+                    .inner
+                    .insert((dim, i as u16), RwLock::new(HashSet::new()));
             }
         }
-        insert_map(&seeds, &dim, &seed, calculate_from - 1);
+        let seed_meta = PointListMeta {
+            point_list: seed,
+            dim,
+            count: calculate_from - 1,
+        };
+        seeds.insert(&seed_meta);
     }
     drop(current);
 
     for i in calculate_from..=n as usize {
         bar.set_message(format!("seed subsets expanded for N = {}...", i));
         let mut dst = MapStore::new();
-        expand_cube_set(&mut seeds, i - 1, &mut dst, bar, parallel);
+        seeds.expand_cube_set(i - 1, &mut dst, bar, parallel);
         seeds = dst;
-
-        // if use_cache && i < n {
-        //     let next = clone_polycubes_to_vec(&mut seeds);
-        //     let name = &format!("cubes_{i}.pcube");
-        //     // if !std::fs::File::open(name).is_ok() {
-        //     //     println!("Saving {} cubes to cache file", next.len());
-        //     //     PCubeFile::write_file(
-        //     //         false,
-        //     //         compression.into(),
-        //     //         next.iter().map(|v| v.into()),
-        //     //         name,
-        //     //     )
-        //     //     .unwrap();
-        //     // } else {
-        //     //     println!("Cache file already exists for N = {i}. Not overwriting.");
-        //     // }
-        // }
 
         let t1_stop = Instant::now();
         let time = t1_stop.duration_since(t1_start).as_micros();
         bar.set_message(format!(
-            "Found {} unique expansions (N = {i}) in  {}.{:06}s",
-            count_polycubes(&seeds),
+            "Found {} unique expansions (N = {i}) in {}.{:06}s",
+            seeds.count_polycubes(),
             time / 1000000,
             time % 1000000
         ));
 
         bar.finish();
     }
-    // exported eperately for memory concerns. already quite a lot more probably but not much I can do
-    let next = move_polycubes_to_vec(&mut seeds);
-    // if use_cache {
-    //     let name = &format!("cubes_{n}.pcube");
-    //     if !std::fs::File::open(name).is_ok() {
-    //         println!("Saving {} cubes to cache file", next.len());
-    //         PCubeFile::write_file(
-    //             false,
-    //             compression.into(),
-    //             next.iter().map(|v| v.into()),
-    //             name,
-    //         )
-    //         .unwrap();
-    //     } else {
-    //         println!("Cache file already exists for N = {n}. Not overwriting.");
-    //     }
-    // }
-    next
-    //count_polycubes(&seeds);
+
+    seeds.into_vec()
 }

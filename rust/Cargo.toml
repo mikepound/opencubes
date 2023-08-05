@@ -3,13 +3,6 @@ name = "opencubes"
 version = "0.1.0"
 edition = "2021"
 
-#feature flags to enable and disable features at compile time
-
-[features]
-diagnostics = []
-size16 = []
-smallset = []
-
 [profile.release]
 debug = true
 

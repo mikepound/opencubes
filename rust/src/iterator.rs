@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::pcube::RawPCube;
+use crate::polycubes::pcube::RawPCube;
 
 /// An iterator over polycubes
 pub trait PolycubeIterator: Iterator<Item = RawPCube>

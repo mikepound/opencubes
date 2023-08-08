@@ -1,16 +1,16 @@
 use std::{
     collections::{BTreeMap, HashSet},
     path::PathBuf,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use opencubes::{naive_polycube::NaivePolyCube, pcube::PCubeFile};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod enumerate;
 use enumerate::enumerate;
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 fn finish_bar(bar: &ProgressBar, duration: Duration, expansions: usize, n: usize) {
     let time = duration.as_micros();
@@ -37,7 +37,17 @@ fn finish_bar(bar: &ProgressBar, duration: Duration, expansions: usize, n: usize
 }
 
 fn unknown_bar() -> ProgressBar {
-    let style = ProgressStyle::with_template("[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}")
+    unknown_bar_with_pos(false)
+}
+
+fn unknown_bar_with_pos(with_pos: bool) -> ProgressBar {
+    let template = if with_pos {
+        "[{elapsed_precise}] [{spinner:10.cyan/blue}] {pos} {msg}"
+    } else {
+        "[{elapsed_precise}] [{spinner:10.cyan/blue}] {msg}"
+    };
+
+    let style = ProgressStyle::with_template(template)
         .unwrap()
         .tick_strings(&[
             ">---------",
@@ -204,23 +214,6 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let in_memory = !opts.no_in_memory;
     let n = opts.n;
 
-    println!("Validating {}", path);
-
-    let mut uniqueness = match (in_memory, uniqueness) {
-        (true, true) => {
-            eprintln!("Verifying uniqueness.");
-            Some(HashSet::new())
-        }
-        (false, true) => {
-            println!("Cannot verify uniqueness without placing all entries in memory. Re-run with `--no-uniqueness` enabled to run.");
-            std::process::exit(1);
-        }
-        (_, false) => {
-            eprintln!("Not verifying uniqueness");
-            None
-        }
-    };
-
     let file = PCubeFile::new_file(path)?;
     let canonical = file.canonical();
     let len = file.len();
@@ -228,7 +221,27 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     let bar = if let Some(len) = len {
         make_bar(len as u64)
     } else {
-        unknown_bar()
+        unknown_bar_with_pos(true)
+    };
+
+    bar.set_message("cubes validated");
+
+    bar.println(format!("Validating {}", path));
+
+    let mut uniqueness = match (in_memory, uniqueness) {
+        (true, true) => {
+            bar.println("Verifying uniqueness.");
+            Some(HashSet::new())
+        }
+        (false, true) => {
+            bar.abandon();
+            println!("Cannot verify uniqueness without placing all entries in memory. Re-run with `--no-uniqueness` enabled to run.");
+            std::process::exit(1);
+        }
+        (_, false) => {
+            bar.println("Not verifying uniqueness");
+            None
+        }
     };
 
     let exit = |msg: &str| {
@@ -238,20 +251,17 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
     };
 
     match (canonical, validate_canonical) {
-        (true, true) => eprintln!("Verifying entry canonicality. File indicates that entries are canonical."),
-        (false, true) => eprintln!("Not verifying entry canonicality. File header does not indicate that entries are canonical"),
-        (true, false) => eprintln!("Not verifying entry canonicality. File header indicates that they are, but check is disabled."),
-        (false, false) => eprintln!("Not verifying canonicality. File header does not indicate that entries are canonical, and check is disabled.")
+        (true, true) => bar.println("Verifying entry canonicality. File indicates that entries are canonical."),
+        (false, true) => bar.println("Not verifying entry canonicality. File header does not indicate that entries are canonical"),
+        (true, false) => bar.println("Not verifying entry canonicality. File header indicates that they are, but check is disabled."),
+        (false, false) => bar.println("Not verifying canonicality. File header does not indicate that entries are canonical, and check is disabled.")
     }
 
     if let Some(n) = n {
-        eprintln!("Verifying that all entries are N = {n}");
+        bar.println(format!("Verifying that all entries are N = {n}"));
     }
 
     let mut total_read = 0;
-
-    let mut last_tick = Instant::now();
-    bar.tick();
 
     for cube in file {
         let cube = match cube {
@@ -264,14 +274,7 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
 
         total_read += 1;
 
-        if len.is_some() {
-            bar.inc(1);
-        } else if last_tick.elapsed() >= Duration::from_millis(66) {
-            last_tick = Instant::now();
-            bar.set_message(format!("{total_read}"));
-            bar.inc(1);
-            bar.tick();
-        }
+        bar.inc(1);
 
         let mut form: Option<NaivePolyCube> = None;
         let canonical_form = || cube.pcube_canonical_form();
@@ -297,9 +300,9 @@ pub fn validate(opts: &ValidateArgs) -> std::io::Result<()> {
                 exit("Found non-unique polycubes.");
             }
         }
-
-        bar.finish();
     }
+
+    bar.finish();
 
     println!("Success: {path}, containing {total_read} cubes, is valid");
 
@@ -318,7 +321,7 @@ pub fn convert(opts: &ConvertArgs) {
     // that the longest files are yielded last.
     let files: BTreeMap<_, _> = opts
         .path
-        .iter()
+        .par_iter()
         .map(|path| {
             let input_file = match PCubeFile::new_file(&path) {
                 Ok(f) => f,
@@ -327,6 +330,7 @@ pub fn convert(opts: &ConvertArgs) {
                     std::process::exit(1);
                 }
             };
+
             (input_file.len(), (input_file, path.to_string()))
         })
         .collect();
@@ -334,36 +338,43 @@ pub fn convert(opts: &ConvertArgs) {
     // Iterate over the files and do some printing, in-order
     let files: Vec<_> = files
         .into_iter()
-        .map(|(_, (input_file, path))| {
+        .map(|(len, (input_file, path))| {
             let output_path = opts.output_path.clone().unwrap_or(path.clone());
 
-            println!("Converting file {}", path);
-            println!("Final output path: {output_path}");
-            if opts.canonicalize {
-                println!("Canonicalizing output");
-            }
-            println!("Input compression: {:?}", input_file.compression());
-            println!("Output compression: {:?}", opts.compression);
+            multi_bar
+                .println(format!("Converting file {}", path))
+                .unwrap();
+            multi_bar
+                .println(format!("Final output path: {output_path}"))
+                .unwrap();
 
-            let len = input_file.len();
+            if opts.canonicalize {
+                multi_bar.println("Canonicalizing output").unwrap();
+            }
+            multi_bar
+                .println(format!("Input compression: {:?}", input_file.compression()))
+                .unwrap();
+            multi_bar
+                .println(format!("Output compression: {:?}", opts.compression))
+                .unwrap();
 
             let bar = if let Some(len) = len {
                 make_bar(len as u64)
             } else {
-                unknown_bar()
+                unknown_bar_with_pos(true)
             };
 
             let bar = multi_bar.add(bar);
 
-            (input_file, path, output_path, len, bar)
+            (input_file, path, output_path, bar)
         })
         .collect();
 
     // Convert, in parallel
     files
         .into_par_iter()
-        .for_each(|(input_file, path, output_path, len, bar)| {
-            bar.set_message(path.to_string());
+        .for_each(|(input_file, path, output_path, bar)| {
+            bar.set_message(format!("cubes converted for {path}"));
 
             let canonical = input_file.canonical();
             let mut output_path_temp = PathBuf::from(&output_path);
@@ -373,12 +384,7 @@ pub fn convert(opts: &ConvertArgs) {
             output_path_temp.pop();
             output_path_temp.push(filename);
 
-            let mut total_read = 0;
-            let mut last_tick = Instant::now();
-
             let input = input_file.filter_map(|v| {
-                total_read += 1;
-
                 let cube = match v {
                     Ok(v) => Some(v),
                     Err(e) => {
@@ -388,14 +394,7 @@ pub fn convert(opts: &ConvertArgs) {
                     }
                 }?;
 
-                if len.is_some() {
-                    bar.inc(1);
-                } else if last_tick.elapsed() >= Duration::from_millis(66) {
-                    last_tick = Instant::now();
-                    bar.set_message(format!("{total_read}"));
-                    bar.inc(1);
-                    bar.tick();
-                }
+                bar.inc(1);
 
                 if opts.canonicalize {
                     Some(NaivePolyCube::from(cube).canonical_form().into())
@@ -421,7 +420,7 @@ pub fn convert(opts: &ConvertArgs) {
 
             if !bar.is_finished() {
                 match std::fs::rename(output_path_temp, output_path) {
-                    Ok(_) => bar.finish_with_message(format!("{path} Done!")),
+                    Ok(_) => bar.finish(),
                     Err(e) => {
                         bar.abandon_with_message(format!("{path} Failed to write final file: {e}"));
                         return;

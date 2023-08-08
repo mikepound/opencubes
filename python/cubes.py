@@ -40,18 +40,22 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
         results = get_cache(n)
         print(f"\nGot polycubes from cache n={n}")
     else:
-        pollycubes = generate_polycubes(n-1, use_cache)
+        polycubes = generate_polycubes(n-1, use_cache)
 
         known_ids = set()
+        known_all_rotations = set()
         done = 0
         print(f"\nHashing polycubes n={n}")
-        for base_cube in pollycubes:
+        for base_cube in polycubes:
             for new_cube in expand_cube(base_cube):
-                cube_id = get_canonical_packing(new_cube, known_ids)
-                known_ids.add(cube_id)
-            log_if_needed(done, len(pollycubes))
+                cube_id = pack(new_cube)
+                if(cube_id not in known_all_rotations):
+                    known_ids.add(cube_id)
+                    for cube_rotation in all_rotations(new_cube):
+                        known_all_rotations.add(pack(cube_rotation))
+            log_if_needed(done, len(polycubes))
             done += 1
-        log_if_needed(done, len(pollycubes))
+        log_if_needed(done, len(polycubes))
 
         print(f"\nGenerating polycubes from hash n={n}")
         results = []
@@ -66,34 +70,6 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
         save_cache(n, results)
 
     return results
-
-
-def get_canonical_packing(polycube: np.ndarray, 
-                          known_ids: set[bytes]) -> bytes:
-    """
-    Determines if a polycube has already been seen.
-
-    Considers all possible rotations of a polycube against the existing 
-        ones stored in memory. Returns the id if it's found in the set,
-        or the maximum id of all rotations if the polycube is new.
-
-    Parameters:
-    polycube (np.array): 3D Numpy byte array where 1 values indicate 
-        cube positions. Must be of type np.int8
-    known_ids (set[bytes]): A set of all known polycube ids
-
-    Returns:
-    cube_id (bytes): the id for this cube
-
-    """
-    max_id = b'\x00'
-    for cube_rotation in all_rotations(polycube):
-        this_id = pack(cube_rotation)
-        if (this_id in known_ids):
-            return this_id
-        if (this_id > max_id):
-            max_id = this_id
-    return max_id
 
 
 if __name__ == "__main__":

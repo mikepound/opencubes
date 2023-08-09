@@ -20,6 +20,8 @@ Some things you might think about:
 ## Contributing!
 This version welcomes contributors!
 
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this work by you shall be licensed with the MIT license ([LICENSE](./LICENSE)), without any additional terms or conditions
+
 ## References
 - [Wikipedia article](https://en.wikipedia.org/wiki/Polycube)
 - [This repository](https://github.com/noelle-crawfish/Enumerating-Polycubes) was a source of inspiration, and a great description of some possible ways to solve this.

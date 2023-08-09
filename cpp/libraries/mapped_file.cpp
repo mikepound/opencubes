@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <fstream>
 #include <string>
 
 // POSIX/Linux APIs
@@ -163,7 +164,7 @@ region::region(std::shared_ptr<file> src) : mfile(src) {
 }
 
 region::~region() {
-    std::lock_guard lock(mfile->mut);
+    // destructor is not thread-safe.
     map_fseek = 0;
     remap(0, 0, 0);
 }
@@ -238,7 +239,30 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
         map_size = newsize;
         map_ptr = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, mfile->fd, map_fseek);
         if (map_ptr == MAP_FAILED) {
+            // If this gets triggered we are in deep trouble
             std::fprintf(stderr, "Error memory-mapping file:%s %lu %d %lu\n", std::strerror(errno), size, mfile->fd, fpos);
+            std::fprintf(stderr, "Dumping /proc/self/maps:\n");
+            // for debugging information try print /proc/self/mmaps contents
+            // as this explains why we hit some limit of the system.
+            std::ifstream fmaps("/proc/self/maps");
+            std::string buf;
+            int count = 0;
+            while(std::getline(fmaps, buf)) {
+                std::fprintf(stderr, "%s\n", buf.c_str());
+                ++count;
+            }
+            std::fprintf(stderr, "counted %d memory-maps in process.\n", count);
+
+
+
+            // todo: if this really is an hard limit of the hardware
+            // for *number of mmap() areas* this means we forced to:
+            // - register all regions in ordered list by mapped seek offset in the mapped::file
+            // - when mmap fails we have to merge adjacent regions
+            // - reference count the regions
+            // - data() returned memory address becomes even more unstable:
+            //   it is invalidated by adjacent construction/deconstruction of region objects
+            // - destruction gets complicated.
             std::abort();
             return;
         }
@@ -377,18 +401,19 @@ void region::readAt(seekoff_t fpos, len_t datasize, void* data) const {
     }
 }
 
-/*
-TODO:
-void region::resident(void * paddr, size_t lenght, bool resident) {
-        // Align paddr to PAGE_SIZE
-        void * start = reinterpret_cast<void*>(uintptr_t(paddr) & ~(PAGE_SIZE-1));
-        lenght = roundToPage(lenght);
 
-        if(madvise(start, lenght, resident ? MADV_WILLNEED : MADV_DONTNEED)) {
-                std::fprintf(stderr,"Error setting memory-map residency:%s\n",std::strerror(errno));
-        }
+void region::resident(bool resident) {
+    std::lock_guard lock(mfile->mut);
+    auto _begin = (void*)roundDown((uintptr_t)usr_ptr);
+    auto _len = roundUp(usr_size);
+    if (_begin < usr_ptr) _len += PAGE_SIZE;
+
+    if(madvise(_begin, _len, resident ? MADV_WILLNEED : MADV_DONTNEED)) {
+            std::fprintf(stderr,"Error setting memory-map residency:%s\n",std::strerror(errno));
+    }
 }
 
+/*
 void region::discard(void * paddr, size_t lenght) {
         // get range of pages that may be discarded.
         // this is always an subset of [paddr, paddr+lenght] range.

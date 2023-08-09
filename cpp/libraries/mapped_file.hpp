@@ -115,6 +115,8 @@ class region {
 
     void remap(const seekoff_t fpos, const len_t size, const len_t window);
 
+    region() {}
+
    public:
     /**
      * Open memory mapped region into a file.
@@ -158,6 +160,31 @@ class region {
      * destructor will not flush()/sync() before tearing down the mapping.
      */
     virtual ~region();
+
+    // region is not copyable
+    region(const region&) =delete;
+    region& operator=(const region&) =delete;
+
+    // region is moveable
+    friend void swap(region& a, region& b) {
+        using std::swap;
+        // thread-safety? None.
+        swap(a.map_ptr,b.map_ptr);
+        swap(a.map_size,b.map_size);
+        swap(a.map_fseek,b.map_fseek);
+        swap(a.usr_ptr,b.usr_ptr);
+        swap(a.usr_size,b.usr_size);
+        swap(a.usr_fseek,b.usr_fseek);
+        swap(a.mfile,b.mfile);
+        swap(a.is_dirty,b.is_dirty);
+    }
+    region(region&& mv) : region() {
+        swap(*this, mv);
+    }
+    region& operator=(region&& mv) {
+        swap(*this, mv);
+        return *this;
+    }
 
     /**
      * Get data pointer.
@@ -256,9 +283,11 @@ class region {
      * Reading non-resident memory region again causes system to
      * fetch data from the disk again.
      * @warn if memory region is not flushed before setting
-     * it non-resident any writes may be discarded to backing file.
+     * resident(false) any writes may be discarded to backing file.
+     * @todo: more strict version?
+     *  actually unmap the region() until data() is called.
      */
-    // void resident(bool state);
+    void resident(bool state);
 
     /**
      * Discard memory region.
@@ -323,6 +352,7 @@ class struct_region : protected region {
     using region::readAt;
     using region::sync;
     using region::writeAt;
+    using region::resident;
 
     // note: size means the sizeof(T)
     using region::size;
@@ -346,6 +376,10 @@ class struct_region : protected region {
         return get();
     }
 };
+
+static_assert(std::is_move_constructible_v<struct_region<int>>);
+static_assert(std::is_move_assignable_v<struct_region<int>>);
+static_assert(std::is_swappable_v<struct_region<int>>);
 
 /**
  * Typed array region.

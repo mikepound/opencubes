@@ -224,12 +224,15 @@ class region {
      */
     void resize(len_t newsize);
 
-    // todo: window(len_t virtsize)
-    // since region() is already lying that it can map
-    // non-page-aligned offsets and sizes
-    // window() would grow this over-extended the memory mapping
-    // to arbitrary size and keep the initialized
-    // user size.
+    /**
+     * @brief over-extend mapping up to max(size(),window) bytes.
+     *  Setting window bigger than size() allows more efficient operation:
+     *  [regionSeek(), regionSeek() + window] area is memory mapped
+     *  but region will only operate on the
+     *  [roundDown(getSeek()), roundUp(getSeek()+size())]
+     *  sub-portion of the memory.
+     */
+    void window(len_t window = 0);
 
     /**
      * Flush mapped memory region into the file.
@@ -353,6 +356,7 @@ class struct_region : protected region {
     using region::sync;
     using region::writeAt;
     using region::resident;
+    using region::window;
 
     // note: size means the sizeof(T)
     using region::size;

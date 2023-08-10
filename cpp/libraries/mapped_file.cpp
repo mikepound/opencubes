@@ -290,6 +290,14 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
     usr_ptr = (uint8_t*)map_ptr + (fpos - map_fseek);
 }
 
+void region::window(len_t window) {
+    std::lock_guard lock(mfile->mut);
+    auto usize = usr_size;
+    // note: remap() does nothing if window == usr_size
+    remap(usr_fseek, window, window);
+    usr_size = usize;
+}
+
 void region::jump(seekoff_t fpos) {
     std::lock_guard lock(mfile->mut);
     remap(fpos, usr_size, map_size);

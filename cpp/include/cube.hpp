@@ -7,6 +7,7 @@
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <atomic>
 
 #include "utils.hpp"
 
@@ -45,20 +46,47 @@ using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 
 struct Cube {
    private:
-    struct {
-        uint8_t is_shared : 1;
-        uint8_t size : 7;  // MAX 127
-    } bits;
-    XYZ *array = nullptr;
+    // cube memory is stored two ways:
+    // normal, new'd buffer
+    // shared, external memory.
 
-    static_assert(sizeof(bits) == sizeof(uint8_t));
+    struct bits_t {
+        uint64_t is_shared : 1;
+        uint64_t size : 7;   // MAX 127
+        uint64_t addr : 56;  // low 56-bits of memory address.
+    };
+    // fields
+    bits_t fields;
 
+    static_assert(sizeof(bits_t) == sizeof(void*));
+
+    static XYZ *get(bits_t key) {
+        // pointer bit-hacking:
+        uint64_t addr = key.addr;
+        return reinterpret_cast<XYZ *>(addr);
+    }
+
+    static bits_t put(bool is_shared, int size, XYZ *addr) {
+        // mask off top byte from the memory address to fit it into bits_t::addr
+        // on x86-64 it is not used by the hardware (yet).
+        // This hack actually saves 8 bytes because previously
+        // the uint8_t caused padding to 16 bytes.
+        // @note if we get segfaults dereferencing get(fields)
+        // then this is the problem and this hack must be undone.
+        uint64_t tmp = reinterpret_cast<uint64_t>((void *)addr);
+        tmp &= 0xffffffffffffff;
+        bits_t bits;
+        bits.addr = tmp;
+        bits.is_shared = is_shared;
+        bits.size = size;
+        return bits;
+    }
    public:
     // Empty cube
-    Cube() : bits{0, 0} {}
+    Cube() : fields{put(0, 0, nullptr)} {}
 
     // Cube with N capacity
-    explicit Cube(uint8_t N) : bits{0, N}, array(new XYZ[bits.size]) {}
+    explicit Cube(uint8_t N) : fields{put(0,N, new XYZ[N])} {}
 
     // Construct from pieces
     Cube(std::initializer_list<XYZ> il) : Cube(il.size()) { std::copy(il.begin(), il.end(), begin()); }
@@ -69,20 +97,23 @@ struct Cube {
     // Construct from external source.
     // Cube shares this the memory until modified.
     // Caller guarantees the memory given will live longer than *this
-    Cube(const XYZ *start, uint8_t n) : bits{1, n}, array(const_cast<XYZ*>(start)) {}
+    Cube(const XYZ *start, uint8_t n) : fields{put(1,n,const_cast<XYZ*>(start))} {}
 
     // Copy ctor.
     Cube(const Cube &copy) : Cube(copy.size()) { std::copy(copy.begin(), copy.end(), begin()); }
 
     ~Cube() {
+        bits_t bits = fields;
         if (!bits.is_shared) {
-            delete[] array;
+            delete[] get(bits);
         }
     }
     friend void swap(Cube &a, Cube &b) {
         using std::swap;
-        swap(a.array, b.array);
-        swap(a.bits, b.bits);
+        bits_t abits = a.fields;
+        bits_t bbits = b.fields;
+        a.fields = bbits;
+        b.fields = abits;
     }
 
     Cube(Cube &&mv) : Cube() { swap(*this, mv); }
@@ -98,19 +129,15 @@ struct Cube {
         return *this;
     }
 
-    size_t size() const { return bits.size; }
+    size_t size() const { return fields.size; }
 
     XYZ *data() {
-        if (bits.is_shared) {
-            // lift to RAM: this should never happen really.
-            Cube tmp(array, bits.size);
-            swap(*this, tmp);
-            std::printf("Bad use of Cube\n");
-        }
-        return array;
-    }
+		return get(fields);
+	}
 
-    const XYZ *data() const { return array; }
+	const XYZ *data() const {
+		return get(fields);
+	}
 
     XYZ *begin() { return data(); }
 
@@ -140,6 +167,7 @@ struct Cube {
     }
 };
 
+static_assert(sizeof(Cube) == 8, "Unexpected sizeof(Cube) for Cube");
 static_assert(std::is_move_assignable_v<Cube>, "Cube must be moveable");
 static_assert(std::is_swappable_v<Cube>, "Cube must swappable");
 

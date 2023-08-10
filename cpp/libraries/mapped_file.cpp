@@ -252,18 +252,6 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
                 ++count;
             }
             std::fprintf(stderr, "counted %d memory-maps in process.\n", count);
-
-
-
-            // todo: if this really is an hard limit of the hardware
-            // for *number of mmap() areas* this means we forced to:
-            // - register all regions in ordered list by mapped seek offset in the mapped::file
-            // - when mmap fails we have to merge adjacent regions
-            // - reference count the regions
-            // - data() returned memory address becomes even more unstable:
-            //   it is invalidated by adjacent construction/deconstruction of region objects
-            // - destruction gets complicated.
-            std::abort();
             return;
         }
     } else {
@@ -284,6 +272,11 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
             std::abort();
             return;
         }
+    }
+
+    // hint that this memory is accessed in random order.
+    if(madvise(map_ptr, map_size, MADV_RANDOM)) {
+        std::fprintf(stderr, "warn: madvice(MADV_RANDOM) failed: %s\n", std::strerror(errno));
     }
     // adjust the usr_ptr to fix
     // any page misalignment.
@@ -412,11 +405,7 @@ void region::readAt(seekoff_t fpos, len_t datasize, void* data) const {
 
 void region::resident(bool resident) {
     std::lock_guard lock(mfile->mut);
-    auto _begin = (void*)roundDown((uintptr_t)usr_ptr);
-    auto _len = roundUp(usr_size);
-    if (_begin < usr_ptr) _len += PAGE_SIZE;
-
-    if(madvise(_begin, _len, resident ? MADV_WILLNEED : MADV_DONTNEED)) {
+    if(madvise(map_ptr, map_size, resident ? MADV_WILLNEED : MADV_DONTNEED)) {
             std::fprintf(stderr,"Error setting memory-map residency:%s\n",std::strerror(errno));
     }
 }

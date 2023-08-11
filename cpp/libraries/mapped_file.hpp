@@ -92,8 +92,7 @@ class file;
 /**
  * Memory-mapped region
  * @brief
- * the region base class implementation memory maps
- * an raw memory range from the file.
+ * the region base class memory-maps an raw memory range from the file.
  */
 class region {
    protected:

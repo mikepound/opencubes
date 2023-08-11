@@ -47,8 +47,8 @@ using XYZSet = std::unordered_set<XYZ, HashXYZ, std::equal_to<XYZ>>;
 struct Cube {
    private:
     // cube memory is stored two ways:
-    // normal, new'd buffer
-    // shared, external memory.
+    // normal, new'd buffer: is_shared == false
+    // shared, external memory: is_shared == true
 
     struct bits_t {
         uint64_t is_shared : 1;
@@ -59,7 +59,7 @@ struct Cube {
     bits_t fields;
 
     static_assert(sizeof(bits_t) == sizeof(void*));
-
+    // extract the pointer from bits_t
     static XYZ *get(bits_t key) {
         // pointer bit-hacking:
         uint64_t addr = key.addr;

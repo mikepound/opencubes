@@ -7,6 +7,8 @@
 #include <iostream>
 #include <mutex>
 #include <thread>
+#include <deque>
+#include <condition_variable>
 
 #include "cache.hpp"
 #include "cube.hpp"
@@ -19,21 +21,26 @@ const int PERF_STEP = 500;
 
 struct Workset {
     std::mutex mu;
+
+    CacheReader cr;
     CubeIterator _begin_total;
     CubeIterator _begin;
     CubeIterator _end;
     Hashy &hashes;
     XYZ targetShape, shape, expandDim;
     bool notSameShape;
-    Workset(ShapeRange &data, Hashy &hashes, XYZ targetShape, XYZ shape, XYZ expandDim, bool notSameShape)
-        : _begin_total(data.begin())
-        , _begin(data.begin())
-        , _end(data.end())
-        , hashes(hashes)
+    Workset(Hashy &hashes, XYZ targetShape, XYZ shape, XYZ expandDim, bool notSameShape)
+        : hashes(hashes)
         , targetShape(targetShape)
         , shape(shape)
         , expandDim(expandDim)
         , notSameShape(notSameShape) {}
+
+    void setRange(ShapeRange &data) {
+        _begin_total = data.begin();
+        _begin = data.begin();
+        _end = data.end();
+    }
 
     struct Subset {
         CubeIterator _begin, _end;
@@ -131,26 +138,69 @@ struct Workset {
 };
 
 struct Worker {
-    Workset &ws;
+    std::shared_ptr<Workset> ws;
     int id;
-    Worker(Workset &ws_, int id_) : ws(ws_), id(id_) {}
-    void run() {
-        // std::printf("start %d\n", id);
-        auto subset = ws.getPart();
-        while (subset.valid) {
-            if (id == 0) {
-                std::printf("  %5.2f%%\r", subset.percent);
-                std::flush(std::cout);
-            }
-            // std::cout << id << " next subset " << &*subset.begin() << " to " << &*subset.end() << "\n";
-            for (auto &c : subset) {
-                // std::printf("%p\n", (void *)&c);
-                // c.print();
-                ws.expand(c);
-            }
-            subset = ws.getPart();
+    int state = 3; // 1 == completed/waiting for job, 2 == processing, 3 == job assigned.
+    std::mutex mtx;
+    std::condition_variable cond;
+    std::condition_variable cond2;
+    std::thread thr;
+
+    Worker(int id_) : id(id_), thr(&Worker::run, this) {}
+    ~Worker() {
+        std::unique_lock lock(mtx);
+        state = 0;
+        cond.notify_one();
+        lock.unlock();
+        thr.join();
+    }
+
+    void launch(std::shared_ptr<Workset> ws_) {
+        std::unique_lock lock(mtx);
+        while(state > 1) {
+            cond2.wait(lock);
         }
-        // std::printf("finished %d\n", id);
+        ws = ws_;
+        state = 3;
+        cond.notify_one();
+    }
+
+    void sync() {
+        std::unique_lock lock(mtx);
+        while(state > 1) {
+            cond2.wait(lock);
+        }
+        ws.reset();
+    }
+
+    void run() {
+        std::unique_lock lock(mtx);
+        std::printf("thread nro. %d started.\n", id);
+        while(state) {
+            state = 1;
+            cond2.notify_one();
+            while(state == 1)
+                cond.wait(lock);
+            if(!state)
+                return;
+            state = 2;
+            // std::printf("start %d\n", id);
+            auto subset = ws->getPart();
+            while (subset.valid) {
+                if (id == 0) {
+                    std::printf("  %5.2f%%\r", subset.percent);
+                    std::flush(std::cout);
+                }
+                // std::cout << id << " next subset " << &*subset.begin() << " to " << &*subset.end() << "\n";
+                for (auto &c : subset) {
+                    // std::printf("%p\n", (void *)&c);
+                    // c.print();
+                    ws->expand(c);
+                }
+                subset = ws->getPart();
+            }
+            // std::printf("finished %d\n", id);
+        }
     }
 };
 
@@ -185,10 +235,19 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
     }
     std::printf("N = %d || generating new cubes from %lu base cubes.\n\r", n, base->size());
     hashes.init(n);
+
+    // Start worker threads.
+    std::deque<Worker> workers;
+    for (int i = 0; i < threads; ++i) {
+        workers.emplace_back(i);
+    }
+
+
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();
     uint32_t totalOutputShapes = hashes.byshape.size();
     uint32_t outShapeCount = 0;
+
     auto prevShapes = Hashy::generateShapes(n - 1);
     for (auto &tup : hashes.byshape) {
         outShapeCount++;
@@ -210,13 +269,14 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             if (diffy == 1)
                 if (shape.y() == shape.x()) diffx = 1;
 
-            std::printf("  shape %d %d %d\n\r", shape.x(), shape.y(), shape.z());
+            auto ws = std::make_shared<Workset>(hashes, targetShape, shape, XYZ(diffx, diffy, diffz), abssum);
 
             if (use_split_cache) {
                 // load cache file only for this shape
                 std::string cachefile = base_path + "cubes_" + std::to_string(n - 1) + "_" + std::to_string(prevShapes[sid].x()) + "-" +
                                         std::to_string(prevShapes[sid].y()) + "-" + std::to_string(prevShapes[sid].z()) + ".bin";
-                cr.loadFile(cachefile);
+                ws->cr.loadFile(cachefile);
+                base = &ws->cr;
                 // cr.printHeader();
             }
             auto s = base->getCubesByShape(sid);
@@ -224,19 +284,25 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
                 std::printf("ERROR caches shape does not match expected shape!\n");
                 exit(-1);
             }
-            // std::printf("starting %d threads\n\r", threads);
-            std::vector<std::thread> ts;
-            Workset ws(s, hashes, targetShape, shape, XYZ(diffx, diffy, diffz), abssum);
-            std::vector<Worker> workers;
-            ts.reserve(threads);
-            workers.reserve(threads);
-            for (int i = 0; i < threads; ++i) {
-                workers.emplace_back(ws, i);
-                ts.emplace_back(&Worker::run, std::ref(workers[i]));
+
+            ws->setRange(s);
+
+            // Wait for jobs to complete.
+            for (auto& thr : workers) {
+                thr.sync();
             }
-            for (int i = 0; i < threads; ++i) {
-                ts[i].join();
+            std::printf("  shape %d %d %d\n\r", shape.x(), shape.y(), shape.z());
+            // launch the new jobs.
+            // Because the workset is held by shared_ptr
+            // main thread can do above preparation work in parallel
+            // while the jobs are running.
+            for (auto& thr : workers) {
+                thr.launch(ws);
             }
+        }
+        // Wait for jobs to complete.
+        for (auto& thr : workers) {
+            thr.sync();
         }
         std::printf("  num: %lu\n\r", hashes.byshape[targetShape].size());
         totalSum += hashes.byshape[targetShape].size();
@@ -252,6 +318,10 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
             }
         }
     }
+
+    // Stop the workers.
+    workers.clear();
+
     if (write_cache && !split_cache) {
         Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
     }

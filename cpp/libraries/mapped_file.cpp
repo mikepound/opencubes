@@ -153,18 +153,19 @@ int file::truncate(seekoff_t newsize) {
  */
 
 region::region(std::shared_ptr<file> src, seekoff_t fpos, len_t size, len_t window) : mfile(src) {
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     remap(fpos, size, window);
 }
 
 region::region(std::shared_ptr<file> src) : mfile(src) {
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     auto sz = mfile->size();
     remap(0, sz, sz);
 }
 
 region::~region() {
     // destructor is not thread-safe.
+    std::lock_guard lock(mtx);
     map_fseek = 0;
     remap(0, 0, 0);
 }
@@ -177,6 +178,8 @@ region::~region() {
  * remap(n, j) munmap old region, mmap new at offset roundDown(n)
  *
  * In read-write mode the backing file is grown to fit the mapping.
+ *
+ * @warn this->mtx must be held when this function is called.
  */
 void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
     if (fpos == usr_fseek && size == usr_size) return;  // No-op
@@ -225,11 +228,16 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
     if (mfile->is_rw()) {
         // RW mapping
         auto newsize = roundUp(std::max(size, window));
+
+        // take file lock so size() check --> truncate is atomic.
+        std::unique_lock trunclock(mfile->mut);
         if (mfile->size() < fpos + newsize && mfile->truncate(fpos + newsize)) {
             // failed. Disk full?
             std::abort();
             return;
         }
+        trunclock.unlock();
+
         // mmap requires fpos && size to be multiple of PAGE_SIZE
         map_fseek = roundDown(fpos);
         if (map_fseek < fpos) {
@@ -265,7 +273,7 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
         map_size = roundUp(std::max(size, window));
         map_fseek = roundDown(fpos);
         // Map the region. (use huge pages, don't reserve backing store)
-        map_ptr = mmap(0, map_size, PROT_READ, MAP_SHARED | MAP_NORESERVE | MAP_HUGE_2MB, mfile->fd, map_fseek);
+        map_ptr = mmap(0, map_size, PROT_READ, MAP_SHARED | MAP_NORESERVE, mfile->fd, map_fseek);
 
         if (!map_ptr || map_ptr == MAP_FAILED) {
             std::fprintf(stderr, "Error mapping file\n");
@@ -284,7 +292,7 @@ void region::remap(const seekoff_t fpos, const len_t size, const len_t window) {
 }
 
 void region::window(len_t window) {
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     auto usize = usr_size;
     // note: remap() does nothing if window == usr_size
     remap(usr_fseek, window, window);
@@ -292,20 +300,20 @@ void region::window(len_t window) {
 }
 
 void region::jump(seekoff_t fpos) {
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     remap(fpos, usr_size, map_size);
     is_dirty = false;
 }
 
 void region::flushJump(seekoff_t fpos) {
     flush();
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     remap(fpos, usr_size, map_size);
 }
 
 void region::flush() {
     // only flush if dirty and RW mapped.
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     if (is_dirty && mfile->is_rw()) {
         is_dirty = false;
         auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
@@ -319,7 +327,7 @@ void region::flush() {
 
 void region::sync() {
     // only flush if dirty and RW mapped.
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     if (is_dirty && mfile->is_rw()) {
         is_dirty = false;
         auto flush_begin = (void*)roundDown((uintptr_t)usr_ptr);
@@ -334,10 +342,12 @@ void region::sync() {
 void region::writeAt(seekoff_t fpos, len_t datasize, const void* data) {
     auto srcmem = (const char*)data;
 
-    std::lock_guard lock(mfile->mut);
+    // take file lock so that file size check --> truncate is atomic.
+    std::unique_lock trunclock(mfile->mut);
     if(mfile->size() < fpos+datasize && mfile->truncate(fpos+datasize)) {
         return;
     }
+    trunclock.unlock();
 
     // does write fall out the mapped area begin?
     if (fpos < map_fseek) {
@@ -404,24 +414,36 @@ void region::readAt(seekoff_t fpos, len_t datasize, void* data) const {
 
 
 void region::resident(bool resident) {
-    std::lock_guard lock(mfile->mut);
+    std::lock_guard lock(mtx);
     if(madvise(map_ptr, map_size, resident ? MADV_WILLNEED : MADV_DONTNEED)) {
             std::fprintf(stderr,"Error setting memory-map residency:%s\n",std::strerror(errno));
     }
 }
 
-/*
-void region::discard(void * paddr, size_t lenght) {
-        // get range of pages that may be discarded.
-        // this is always an subset of [paddr, paddr+lenght] range.
-        void * start = (void*)roundUp((uintptr_t)paddr, PAGE_SIZE);
-        lenght = roundDown(lenght, PAGE_SIZE);
 
-        if(start < (char*)paddr + lenght && lenght >= PAGE_SIZE) {
-                // note: errors are ignored here.
-                madvise(start, lenght, MADV_REMOVE);
+void region::discard(seekoff_t fpos, len_t datasize) {
+
+    auto cur = usr_fseek + fpos;
+
+    if (cur < map_fseek + map_size) {
+        // max size that can discarded from this mapping:
+        ssize_t dm = std::min(map_size - (cur - map_fseek), datasize);
+
+        // Have to be careful here: if we delete too much
+        // caller will not have an good time.
+        // align size down to page size.
+        dm = roundDown(dm);
+        // align file offset up
+        auto _first = roundUp(cur - map_fseek);
+        if(_first > cur - map_fseek)
+            dm -= PAGE_SIZE;
+
+        if(dm >= (signed)PAGE_SIZE) {
+            if(madvise((char*)map_ptr + _first, dm, MADV_REMOVE)) {
+                std::fprintf(stderr,"Error discarding memory-map region:%s\n",std::strerror(errno));
+            }
         }
+    }
 }
-*/
 
 };  // namespace mapped

@@ -92,10 +92,11 @@ class file;
 /**
  * Memory-mapped region
  * @brief
- * the region base class memory-maps an raw memory range from the file.
+ * the base class memory-maps an raw range of bytes from the backing file.
  */
 class region {
    protected:
+    std::mutex mtx;
     // actually mapped region:
     void* map_ptr = nullptr;
     size_t map_size = 0;
@@ -167,7 +168,9 @@ class region {
     // region is moveable
     friend void swap(region& a, region& b) {
         using std::swap;
-        // thread-safety? None.
+        //std::lock(a.mtx,b.mtx);
+        //std::lock_guard l0(a.mtx, std::adopt_lock);
+        //std::lock_guard l1(b.mtx, std::adopt_lock);
         swap(a.map_ptr,b.map_ptr);
         swap(a.map_size,b.map_size);
         swap(a.map_fseek,b.map_fseek);
@@ -286,8 +289,6 @@ class region {
      * fetch data from the disk again.
      * @warn if memory region is not flushed before setting
      * resident(false) any writes may be discarded to backing file.
-     * @todo: more strict version?
-     *  actually unmap the region() until data() is called.
      */
     void resident(bool state);
 
@@ -297,9 +298,15 @@ class region {
      * to reclaim the memory *and* the on-disk area.
      * This means the data is lost in the mapped memory region,
      * and any data within will not be written onto disk by sync()
-     * Subsequent reads after discard() return undefined data.
+     * Subsequent reads after discard() return zero filled data.
+     * @note
+     *  The discarded area shall be within the mapped area.
+     * @param fpos
+     *  file offset from begin of this mapping. (getSeek() + fpos)
+     * @param datasize
+     *  length of the data area to discard.
      */
-    // void discard();
+    void discard(seekoff_t fpos, len_t datasize);
 
     /**
      * Seek in the file to fpos position and
@@ -356,6 +363,7 @@ class struct_region : protected region {
     using region::writeAt;
     using region::resident;
     using region::window;
+    using region::discard;
 
     // note: size means the sizeof(T)
     using region::size;

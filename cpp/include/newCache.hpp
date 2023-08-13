@@ -4,11 +4,33 @@
 #include <cstring>
 #include <string>
 
+#include <deque>
+#include <future>
+
 #include "cube.hpp"
 #include "hashes.hpp"
 #include "mapped_file.hpp"
 
-class Workset;
+namespace cacheformat {
+    static constexpr uint32_t MAGIC = 0x42554350;
+    static constexpr uint32_t XYZ_SIZE = 3;
+    static constexpr uint32_t ALL_SHAPES = -1;
+
+    struct Header {
+        uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
+        uint32_t n;              // we will never need 32bit but it is nicely aligned
+        uint32_t numShapes;      // defines length of the shapeTable
+        uint64_t numPolycubes;   // total number of polycubes
+    };
+    struct ShapeEntry {
+        uint8_t dim0;      // offset by -1
+        uint8_t dim1;      // offset by -1
+        uint8_t dim2;      // offset by -1
+        uint8_t reserved;  // for alignment
+        uint64_t offset;   // from beginning of file
+        uint64_t size;     // in bytes should be multiple of XYZ_SIZE
+    };
+};
 
 class CubeIterator {
    public:
@@ -52,7 +74,6 @@ class CubeIterator {
     friend bool operator<(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr < b.m_ptr; };
     friend bool operator>(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr > b.m_ptr; };
     friend bool operator!=(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr != b.m_ptr; };
-    //friend class Workset;
 
    private:
     uint32_t n;
@@ -101,25 +122,6 @@ class CacheReader : public ICache {
     uint32_t numShapes() override { return header->numShapes; };
     operator bool() { return fileLoaded_; }
 
-    static constexpr uint32_t MAGIC = 0x42554350;
-    static constexpr uint32_t XYZ_SIZE = 3;
-    static constexpr uint32_t ALL_SHAPES = -1;
-
-    struct Header {
-        uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
-        uint32_t n;              // we will never need 32bit but it is nicely aligned
-        uint32_t numShapes;      // defines length of the shapeTable
-        uint64_t numPolycubes;   // total number of polycubes
-    };
-    struct ShapeEntry {
-        uint8_t dim0;      // offset by -1
-        uint8_t dim1;      // offset by -1
-        uint8_t dim2;      // offset by -1
-        uint8_t reserved;  // for alignment
-        uint64_t offset;   // from beginning of file
-        uint64_t size;     // in bytes should be multiple of XYZ_SIZE
-    };
-
     // Do begin() and end() make sense for CacheReader
     // If the cache file provides data for more than single shape?
     // The data might not even be mapped contiguously to save memory.
@@ -138,15 +140,15 @@ class CacheReader : public ICache {
 
    private:
     std::shared_ptr<mapped::file> file_;
-    std::unique_ptr<const mapped::struct_region<Header>> header_;
-    std::unique_ptr<const mapped::array_region<ShapeEntry>> shapes_;
+    std::unique_ptr<const mapped::struct_region<cacheformat::Header>> header_;
+    std::unique_ptr<const mapped::array_region<cacheformat::ShapeEntry>> shapes_;
     std::unique_ptr<const mapped::array_region<XYZ>> xyz_;
 
     std::string path_;
     bool fileLoaded_;
-    const Header dummyHeader;
-    const Header* header;
-    const ShapeEntry* shapes;
+    const cacheformat::Header dummyHeader;
+    const cacheformat::Header* header;
+    const cacheformat::ShapeEntry* shapes;
 };
 
 class FlatCache : public ICache {
@@ -178,6 +180,26 @@ class FlatCache : public ICache {
     };
     uint32_t numShapes() override { return shapes.size(); };
     size_t size() override { return allXYZs.size() / n / sizeof(XYZ); }
+};
+
+class CacheWriter {
+protected:
+    // CacheWriter flushes the data in background.
+    std::deque<std::future<void>> m_flushes;
+public:
+    CacheWriter() {}
+    ~CacheWriter();
+
+    /**
+     * Capture snapshot of the Hashy and write cache file.
+     * The data may not be entirely flushed before save() returns.
+     */
+    void save(std::string path, Hashy &hashes, uint8_t n);
+
+    /**
+     * Complete all flushes immediately.
+     */
+    void flush();
 };
 
 #endif

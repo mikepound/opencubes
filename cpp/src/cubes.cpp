@@ -10,7 +10,6 @@
 #include <deque>
 #include <condition_variable>
 
-#include "cache.hpp"
 #include "cube.hpp"
 #include "hashes.hpp"
 #include "newCache.hpp"
@@ -216,7 +215,8 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         if (write_cache) {
-            Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
+            CacheWriter cw;
+            cw.save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
         }
         return FlatCache(hashes, n);
     }
@@ -242,6 +242,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         workers.emplace_back(i);
     }
 
+    CacheWriter cw;
 
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();
@@ -307,7 +308,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         std::printf("  num: %lu\n\r", hashes.byshape[targetShape].size());
         totalSum += hashes.byshape[targetShape].size();
         if (write_cache && split_cache) {
-            Cache::save(base_path + "cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
+            cw.save(base_path + "cubes_" + std::to_string(n) + "_" + std::to_string(targetShape.x()) + "-" + std::to_string(targetShape.y()) + "-" +
                             std::to_string(targetShape.z()) + ".bin",
                         hashes, n);
         }
@@ -323,8 +324,11 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
     workers.clear();
 
     if (write_cache && !split_cache) {
-        Cache::save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
+        cw.save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
     }
+
+    cw.flush();
+
     auto end = std::chrono::steady_clock::now();
     auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::printf("took %.2f s\033[0K\n\r", dt_ms / 1000.f);

@@ -41,16 +41,16 @@ int CacheReader::loadFile(const std::string path) {
     }
 
     // map the header struct
-    header_ = std::make_unique<const mapped::struct_region<Header>>(file_, 0);
+    header_ = std::make_unique<const mapped::struct_region<cacheformat::Header>>(file_, 0);
     header = header_->get();
 
-    if (header->magic != MAGIC) {
+    if (header->magic != cacheformat::MAGIC) {
         std::printf("error opening file: file not recognized\n");
         return 1;
     }
 
     // map the ShapeEntry array:
-    shapes_ = std::make_unique<const mapped::array_region<ShapeEntry>>(file_, header_->getEndSeek(), (*header_)->numShapes);
+    shapes_ = std::make_unique<const mapped::array_region<cacheformat::ShapeEntry>>(file_, header_->getEndSeek(), (*header_)->numShapes);
     shapes = shapes_->get();
 
     size_t datasize = 0;
@@ -84,8 +84,8 @@ ShapeRange CacheReader::getCubesByShape(uint32_t i) {
     for (unsigned int k = 0; k < i; ++k) {
         offset += shapes[k].size;
     }
-    auto index = offset / XYZ_SIZE;
-    auto num_xyz = shapes[i].size / XYZ_SIZE;
+    auto index = offset / cacheformat::XYZ_SIZE;
+    auto num_xyz = shapes[i].size / cacheformat::XYZ_SIZE;
     // pointers to Cube data:
     auto start = xyz_->get() + index;
     auto end = xyz_->get() + index + num_xyz;
@@ -106,3 +106,112 @@ void CacheReader::unload() {
 }
 
 CacheReader::~CacheReader() { unload(); }
+
+CacheWriter::CacheWriter::~CacheWriter()
+{
+    flush();
+}
+
+
+void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
+    if (hashes.size() == 0) return;
+
+    using namespace mapped;
+    using namespace cacheformat;
+
+    auto file_ = std::make_shared<file>();
+    if (file_->openrw(path.c_str(), 0)) {
+        std::printf("error opening file\n");
+        return;
+    }
+
+    auto header = std::make_unique<struct_region<Header>>(file_, 0);
+    (*header)->magic = cacheformat::MAGIC;
+    (*header)->n = n;
+    (*header)->numShapes = hashes.byshape.size();
+    (*header)->numPolycubes = hashes.size();
+
+    std::vector<XYZ> keys;
+    keys.reserve((*header)->numShapes);
+    for (auto &pair : hashes.byshape) keys.push_back(pair.first);
+    std::sort(keys.begin(), keys.end());
+
+    auto shapeEntry = std::make_unique<array_region<ShapeEntry>>(file_, header->getEndSeek(), (*header)->numShapes);
+
+    uint64_t offset = shapeEntry->getEndSeek();
+    size_t num_cubes = 0;
+    int i = 0;
+    for (auto &key : keys) {
+        auto& se = (*shapeEntry)[i++];
+        se.dim0 = key.x();
+        se.dim1 = key.y();
+        se.dim2 = key.z();
+        se.reserved = 0;
+        se.offset = offset;
+        auto count = hashes.byshape[key].size() ;
+        num_cubes += count;
+        se.size = count * XYZ_SIZE * n;
+        offset += se.size;
+    }
+
+    // put XYZs
+    // do this in parallel?
+    // it takes an long while to write out the file.
+    // note: we are at peak memory use in this function.
+
+    auto xyz = std::make_unique<array_region<XYZ>>(file_, (*shapeEntry)[0].offset, num_cubes * n);
+    auto put = xyz->get();
+
+    for (auto &key : keys) {
+        for (auto &subset : hashes.byshape[key].byhash) {
+            auto itr = subset.set.begin();
+            while(itr != subset.set.end()) {
+                static_assert(sizeof(XYZ) == XYZ_SIZE);
+                assert(itr->size() == n);
+                itr->copyout(n, put);
+                put += n;
+                ++itr;
+            }
+        }
+    }
+    // move the resources into lambda and async launch it.
+    // the file is finalized in background.
+    m_flushes.emplace_back(std::async(std::launch::async, [
+        file = std::move(file_),
+        header = std::move(header),
+        shapeEntry = std::move(shapeEntry),
+        xyz = std::move(xyz)]() mutable {
+            // flush.
+            header->flush();
+            shapeEntry->flush();
+            xyz->flush();
+            // Truncate file to proper size.
+            file->truncate(xyz->getEndSeek());
+            file->close();
+            xyz.reset();
+            shapeEntry.reset();
+            header.reset();
+            file.reset();
+    }));
+
+    // cleanup completed flushes. (don't wait)
+    auto rm = std::remove_if(m_flushes.begin(), m_flushes.end(), [](auto& fut) {
+        if(fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            fut.get();
+            return true;
+        }
+        return false;
+    });
+    m_flushes.erase(rm, m_flushes.end());
+
+    std::printf("saved %s, %d unfinished.\n\r", path.c_str(), (int)m_flushes.size());
+}
+
+void CacheWriter::flush()
+{
+    for(auto& fut : m_flushes) {
+        fut.get();
+    }
+    m_flushes.clear();
+}
+

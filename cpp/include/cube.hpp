@@ -165,6 +165,13 @@ struct Cube {
     void print() const {
         for (auto &p : *this) std::printf("  (%2d %2d %2d)\n\r", p.x(), p.y(), p.z());
     }
+
+    /**
+     * Copy cube data into destination buffer.
+     */
+    void copyout(int num, XYZ* dest) const {
+        std::copy_n(begin(), num, dest);
+    }
 };
 
 static_assert(sizeof(Cube) == 8, "Unexpected sizeof(Cube) for Cube");

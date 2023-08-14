@@ -131,6 +131,7 @@ void CacheWriter::run() {
             task();
 
             lock.lock();
+            --m_num_copys;
             continue;
         }
         // file flushes:
@@ -142,6 +143,7 @@ void CacheWriter::run() {
             task();
 
             lock.lock();
+            --m_num_flushes;
             continue;
         }
         // notify that we are done here.
@@ -232,12 +234,14 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 
                 std::lock_guard lock(m_mtx);
                 m_copy.emplace_back(std::bind(copyrange, start, itr, dest));
+                ++m_num_copys;
                 m_run.notify_all();
             }
             // copy remainder, if any.
             if (dist) {
                 std::lock_guard lock(m_mtx);
                 m_copy.emplace_back(std::bind(copyrange, itr, subset.set.end(), put));
+                ++m_num_copys;
                 m_run.notify_all();
                 put += n * dist;
 
@@ -253,7 +257,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 
     // sync up.
     std::unique_lock lock(m_mtx);
-    while (!m_copy.empty()) {
+    while (m_num_copys) {
         m_wait.wait(lock);
     }
 
@@ -273,6 +277,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
             header.reset();
         },
         std::move(file_), std::move(header), std::move(shapeEntry), std::move(xyz)));
+    ++m_num_flushes;
     m_run.notify_all();
 
     auto time_end = std::chrono::steady_clock::now();
@@ -283,7 +288,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
 
 void CacheWriter::flush() {
     std::unique_lock lock(m_mtx);
-    while (!m_flushes.empty()) {
+    while (m_num_flushes) {
         m_wait.wait(lock);
     }
 }

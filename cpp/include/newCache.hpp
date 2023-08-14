@@ -192,9 +192,11 @@ class CacheWriter {
     bool m_active = true;
 
     // Jobs that flush and finalize the written file.
+    size_t m_num_flushes = 0;
     std::deque<std::function<void(void)>> m_flushes;
 
     // Temporary copy jobs into the memory mapped file.
+    size_t m_num_copys = 0;
     std::deque<std::function<void(void)>> m_copy;
 
     // thread pool executing the jobs.

@@ -215,7 +215,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         hashes.insert(Cube{{XYZ(0, 0, 0)}}, XYZ(0, 0, 0));
         std::printf("%ld elements for %d\n\r", hashes.size(), n);
         if (write_cache) {
-            CacheWriter cw;
+            CacheWriter cw(1);
             cw.save(base_path + "cubes_" + std::to_string(n) + ".bin", hashes, n);
         }
         return FlatCache(hashes, n);
@@ -242,7 +242,7 @@ FlatCache gen(int n, int threads, bool use_cache, bool write_cache, bool split_c
         workers.emplace_back(i);
     }
 
-    CacheWriter cw;
+    CacheWriter cw(threads);
 
     uint64_t totalSum = 0;
     auto start = std::chrono::steady_clock::now();

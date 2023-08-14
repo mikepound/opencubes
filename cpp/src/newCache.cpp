@@ -1,8 +1,4 @@
-#include "../include/newCache.hpp"
-
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <unistd.h>
+#include "newCache.hpp"
 
 #include <iostream>
 
@@ -107,11 +103,54 @@ void CacheReader::unload() {
 
 CacheReader::~CacheReader() { unload(); }
 
-CacheWriter::CacheWriter::~CacheWriter()
-{
-    flush();
+CacheWriter::CacheWriter(int num_threads) {
+    for (int i = 0; i < num_threads; ++i) {
+        m_flushers.emplace_back(&CacheWriter::run, this);
+    }
 }
 
+CacheWriter::CacheWriter::~CacheWriter() {
+    flush();
+    // stop the threads.
+    std::unique_lock lock(m_mtx);
+    m_active = false;
+    m_run.notify_all();
+    lock.unlock();
+    for (auto &thr : m_flushers) thr.join();
+}
+
+void CacheWriter::run() {
+    std::unique_lock lock(m_mtx);
+    while (m_active) {
+        // do copy jobs:
+        if (!m_copy.empty()) {
+            auto task = std::move(m_copy.front());
+            m_copy.pop_front();
+            lock.unlock();
+
+            task();
+
+            lock.lock();
+            continue;
+        }
+        // file flushes:
+        if (!m_flushes.empty()) {
+            auto task = std::move(m_flushes.front());
+            m_flushes.pop_front();
+            lock.unlock();
+
+            task();
+
+            lock.lock();
+            continue;
+        }
+        // notify that we are done here.
+        m_wait.notify_one();
+        // wait for jobs.
+        m_run.wait(lock);
+    }
+    m_wait.notify_one();
+}
 
 void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
     if (hashes.size() == 0) return;
@@ -125,7 +164,7 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
         return;
     }
 
-    auto header = std::make_unique<struct_region<Header>>(file_, 0);
+    auto header = std::make_shared<struct_region<Header>>(file_, 0);
     (*header)->magic = cacheformat::MAGIC;
     (*header)->n = n;
     (*header)->numShapes = hashes.byshape.size();
@@ -136,51 +175,91 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
     for (auto &pair : hashes.byshape) keys.push_back(pair.first);
     std::sort(keys.begin(), keys.end());
 
-    auto shapeEntry = std::make_unique<array_region<ShapeEntry>>(file_, header->getEndSeek(), (*header)->numShapes);
+    auto shapeEntry = std::make_shared<array_region<ShapeEntry>>(file_, header->getEndSeek(), (*header)->numShapes);
 
     uint64_t offset = shapeEntry->getEndSeek();
     size_t num_cubes = 0;
     int i = 0;
     for (auto &key : keys) {
-        auto& se = (*shapeEntry)[i++];
+        auto &se = (*shapeEntry)[i++];
         se.dim0 = key.x();
         se.dim1 = key.y();
         se.dim2 = key.z();
         se.reserved = 0;
         se.offset = offset;
-        auto count = hashes.byshape[key].size() ;
+        auto count = hashes.byshape[key].size();
         num_cubes += count;
         se.size = count * XYZ_SIZE * n;
         offset += se.size;
     }
 
     // put XYZs
-    // do this in parallel?
-    // it takes an long while to write out the file.
-    // note: we are at peak memory use in this function.
+    // Serialize large CubeSet(s) in parallel.
 
-    auto xyz = std::make_unique<array_region<XYZ>>(file_, (*shapeEntry)[0].offset, num_cubes * n);
+    auto xyz = std::make_shared<array_region<XYZ>>(file_, (*shapeEntry)[0].offset, num_cubes * n);
     auto put = xyz->get();
 
+    auto copyrange = [n](CubeSet::iterator itr, CubeSet::iterator end, XYZ *dest) -> void {
+        while (itr != end) {
+            static_assert(sizeof(XYZ) == XYZ_SIZE);
+            assert(itr->size() == n);
+            itr->copyout(n, dest);
+            dest += n;
+            ++itr;
+        }
+    };
+
+    auto time_start = std::chrono::steady_clock::now();
     for (auto &key : keys) {
         for (auto &subset : hashes.byshape[key].byhash) {
             auto itr = subset.set.begin();
-            while(itr != subset.set.end()) {
-                static_assert(sizeof(XYZ) == XYZ_SIZE);
-                assert(itr->size() == n);
-                itr->copyout(n, put);
-                put += n;
-                ++itr;
+
+            ptrdiff_t dist = subset.set.size();
+            // distribute if range is large enough.
+            auto skip = std::max(4096L, std::max(1L, dist / (signed)m_flushers.size()));
+            while (dist > skip) {
+                auto start = itr;
+                auto dest = put;
+
+                auto inc = std::min(dist, skip);
+                std::advance(itr, inc);
+                put += n * inc;
+                dist = std::distance(itr, subset.set.end());
+
+                auto done = 100.0f * (std::distance(xyz->get(), put) / float(num_cubes * n));
+                std::printf("writing data %5.2f%% ...  \r", done);
+                std::flush(std::cout);
+
+                std::lock_guard lock(m_mtx);
+                m_copy.emplace_back(std::bind(copyrange, start, itr, dest));
+                m_run.notify_all();
+            }
+            // copy remainder, if any.
+            if (dist) {
+                std::lock_guard lock(m_mtx);
+                m_copy.emplace_back(std::bind(copyrange, itr, subset.set.end(), put));
+                m_run.notify_all();
+                put += n * dist;
+
+                auto done = 100.0f * (std::distance(xyz->get(), put) / float(num_cubes * n));
+                std::printf("writing data %5.2f%% ...  \r", done);
+                std::flush(std::cout);
             }
         }
     }
-    // move the resources into lambda and async launch it.
-    // the file is finalized in background.
-    m_flushes.emplace_back(std::async(std::launch::async, [
-        file = std::move(file_),
-        header = std::move(header),
-        shapeEntry = std::move(shapeEntry),
-        xyz = std::move(xyz)]() mutable {
+
+    // sanity check:
+    assert(put == (*xyz).get() + num_cubes * n);
+
+    // sync up.
+    std::unique_lock lock(m_mtx);
+    while (!m_copy.empty()) {
+        m_wait.wait(lock);
+    }
+
+    // move the resources into flush job.
+    m_flushes.emplace_back(std::bind(
+        [](auto &&file, auto &&header, auto &&shapeEntry, auto &&xyz) -> void {
             // flush.
             header->flush();
             shapeEntry->flush();
@@ -188,30 +267,23 @@ void CacheWriter::save(std::string path, Hashy &hashes, uint8_t n) {
             // Truncate file to proper size.
             file->truncate(xyz->getEndSeek());
             file->close();
+            file.reset();
             xyz.reset();
             shapeEntry.reset();
             header.reset();
-            file.reset();
-    }));
+        },
+        std::move(file_), std::move(header), std::move(shapeEntry), std::move(xyz)));
+    m_run.notify_all();
 
-    // cleanup completed flushes. (don't wait)
-    auto rm = std::remove_if(m_flushes.begin(), m_flushes.end(), [](auto& fut) {
-        if(fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            fut.get();
-            return true;
-        }
-        return false;
-    });
-    m_flushes.erase(rm, m_flushes.end());
+    auto time_end = std::chrono::steady_clock::now();
+    auto dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_end - time_start).count();
 
-    std::printf("saved %s, %d unfinished.\n\r", path.c_str(), (int)m_flushes.size());
+    std::printf("saved %s, took %.2f s\n\r", path.c_str(), dt_ms / 1000.f);
 }
 
-void CacheWriter::flush()
-{
-    for(auto& fut : m_flushes) {
-        fut.get();
+void CacheWriter::flush() {
+    std::unique_lock lock(m_mtx);
+    while (!m_flushes.empty()) {
+        m_wait.wait(lock);
     }
-    m_flushes.clear();
 }
-

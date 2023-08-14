@@ -28,7 +28,7 @@ using CubeSet = std::unordered_set<Cube, HashCube, std::equal_to<Cube>>;
 struct Hashy {
     struct Subsubhashy {
         CubeSet set;
-        std::shared_mutex set_mutex;
+        mutable std::shared_mutex set_mutex;
 
         template <typename CubeT>
         void insert(CubeT &&c) {
@@ -36,12 +36,16 @@ struct Hashy {
             set.emplace(std::forward<CubeT>(c));
         }
 
-        bool contains(const Cube &c) {
+        bool contains(const Cube &c) const {
             std::shared_lock lock(set_mutex);
-            return set.count(c);
+            auto itr = set.find(c);
+            if(itr != set.end()) {
+				return true;
+			}
+            return false;
         }
 
-        auto size() {
+        auto size() const {
             std::shared_lock lock(set_mutex);
             return set.size();
         }
@@ -59,7 +63,7 @@ struct Hashy {
             // printf("new size %ld\n\r", byshape[shape].size());
         }
 
-        auto size() {
+        auto size() const {
             size_t sum = 0;
             for (auto &set : byhash) {
                 auto part = set.size();
@@ -95,12 +99,12 @@ struct Hashy {
         set.insert(std::forward<CubeT>(c));
     }
 
-    auto size() {
+    auto size() const {
         size_t sum = 0;
-        DEBUG_PRINTF("%ld maps by shape\n\r", byshape.size());
+        DEBUG1_PRINTF("%ld maps by shape\n\r", byshape.size());
         for (auto &set : byshape) {
             auto part = set.second.size();
-            DEBUG_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
+            DEBUG1_PRINTF("bucket [%2d %2d %2d]: %ld\n", set.first.x(), set.first.y(), set.first.z(), part);
             sum += part;
         }
         return sum;

@@ -19,4 +19,5 @@ add_executable(${PROJECT_NAME} $<TARGET_OBJECTS:CubeObjs> ${TESTS})
 
 target_link_libraries(GTest::GTest INTERFACE gtest_main)
 target_link_libraries(${PROJECT_NAME} pthread GTest::GTest)
+target_link_libraries(${PROJECT_NAME} mapped_file)
 ConfigureTarget(${PROJECT_NAME})

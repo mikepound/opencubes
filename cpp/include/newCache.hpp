@@ -1,13 +1,38 @@
 #pragma once
 #ifndef OPENCUBES_NEWCACHE_HPP
 #define OPENCUBES_NEWCACHE_HPP
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "cube.hpp"
 #include "hashes.hpp"
+#include "mapped_file.hpp"
 
-class Workset;
+namespace cacheformat {
+static constexpr uint32_t MAGIC = 0x42554350;
+static constexpr uint32_t XYZ_SIZE = 3;
+static constexpr uint32_t ALL_SHAPES = -1;
+
+struct Header {
+    uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
+    uint32_t n;              // we will never need 32bit but it is nicely aligned
+    uint32_t numShapes;      // defines length of the shapeTable
+    uint64_t numPolycubes;   // total number of polycubes
+};
+struct ShapeEntry {
+    uint8_t dim0;      // offset by -1
+    uint8_t dim1;      // offset by -1
+    uint8_t dim2;      // offset by -1
+    uint8_t reserved;  // for alignment
+    uint64_t offset;   // from beginning of file
+    uint64_t size;     // in bytes should be multiple of XYZ_SIZE
+};
+};  // namespace cacheformat
 
 class CubeIterator {
    public:
@@ -18,7 +43,7 @@ class CubeIterator {
     using reference = Cube&;  // or also value_type&
 
     // constructor
-    CubeIterator(uint32_t _n, XYZ* ptr) : n(_n), m_ptr(ptr) {}
+    CubeIterator(uint32_t _n, const XYZ* ptr) : n(_n), m_ptr(ptr) {}
 
     // invalid iterator (can't deference)
     explicit CubeIterator() : n(0), m_ptr(nullptr) {}
@@ -26,6 +51,8 @@ class CubeIterator {
     // derefecence
     const value_type operator*() const { return Cube(m_ptr, n); }
     // pointer operator->() { return (pointer)m_ptr; }
+
+    const XYZ* data() const { return m_ptr; }
 
     // Prefix increment
     CubeIterator& operator++() {
@@ -49,17 +76,16 @@ class CubeIterator {
     friend bool operator<(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr < b.m_ptr; };
     friend bool operator>(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr > b.m_ptr; };
     friend bool operator!=(const CubeIterator& a, const CubeIterator& b) { return a.m_ptr != b.m_ptr; };
-    friend class Workset;
 
    private:
     uint32_t n;
-    XYZ* m_ptr;
+    const XYZ* m_ptr;
 };
 
 class ShapeRange {
    public:
-    ShapeRange(XYZ* start, XYZ* stop, uint64_t _cubeLen, XYZ _shape)
-        : b(_cubeLen, start), e(_cubeLen, stop), size_(((uint64_t)stop - (uint64_t)start) / (_cubeLen * sizeof(XYZ))), shape_(_shape) {}
+    ShapeRange(const XYZ* start, const XYZ* stop, uint64_t _cubeLen, XYZ _shape)
+        : b(_cubeLen, start), e(_cubeLen, stop), size_(std::distance(start, stop) / _cubeLen), shape_(_shape) {}
 
     CubeIterator begin() { return b; }
     CubeIterator end() { return e; }
@@ -98,46 +124,33 @@ class CacheReader : public ICache {
     uint32_t numShapes() override { return header->numShapes; };
     operator bool() { return fileLoaded_; }
 
-    static constexpr uint32_t MAGIC = 0x42554350;
-    static constexpr uint32_t XYZ_SIZE = 3;
-    static constexpr uint32_t ALL_SHAPES = -1;
-
-    struct Header {
-        uint32_t magic = MAGIC;  // shoud be "PCUB" = 0x42554350
-        uint32_t n;              // we will never need 32bit but it is nicely aligned
-        uint32_t numShapes;      // defines length of the shapeTable
-        uint64_t numPolycubes;   // total number of polycubes
-    };
-    struct ShapeEntry {
-        uint8_t dim0;      // offset by -1
-        uint8_t dim1;      // offset by -1
-        uint8_t dim2;      // offset by -1
-        uint8_t reserved;  // for alignment
-        uint64_t offset;   // from beginning of file
-        uint64_t size;     // in bytes should be multiple of XYZ_SIZE
-    };
-
-    CubeIterator begin() {
-        uint8_t* start = filePointer + shapes[0].offset;
-        return CubeIterator(header->n, (XYZ*)start);
+    // Do begin() and end() make sense for CacheReader
+    // If the cache file provides data for more than single shape?
+    // The data might not even be mapped contiguously to save memory.
+    /*CubeIterator begin() {
+        const uint8_t* start = filePointer + shapes[0].offset;
+        return CubeIterator(header->n, (const XYZ*)start);
     }
 
     CubeIterator end() {
-        uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
-        return CubeIterator(header->n, (XYZ*)stop);
-    }
+        const uint8_t* stop = filePointer + shapes[0].offset + header->numPolycubes * header->n * XYZ_SIZE;
+        return CubeIterator(header->n, (const XYZ*)stop);
+    }*/
 
+    // get shapes at index [0, numShapes()[
     ShapeRange getCubesByShape(uint32_t i) override;
 
    private:
-    uint8_t* filePointer;
+    std::shared_ptr<mapped::file> file_;
+    std::unique_ptr<const mapped::struct_region<cacheformat::Header>> header_;
+    std::unique_ptr<const mapped::array_region<cacheformat::ShapeEntry>> shapes_;
+    std::unique_ptr<const mapped::array_region<XYZ>> xyz_;
+
     std::string path_;
-    int fileDescriptor_;
-    uint64_t fileSize_;
     bool fileLoaded_;
-    Header dummyHeader;
-    Header* header;
-    ShapeEntry* shapes;
+    const cacheformat::Header dummyHeader;
+    const cacheformat::Header* header;
+    const cacheformat::ShapeEntry* shapes;
 };
 
 class FlatCache : public ICache {
@@ -169,6 +182,42 @@ class FlatCache : public ICache {
     };
     uint32_t numShapes() override { return shapes.size(); };
     size_t size() override { return allXYZs.size() / n / sizeof(XYZ); }
+};
+
+class CacheWriter {
+   protected:
+    std::mutex m_mtx;
+    std::condition_variable m_run;
+    std::condition_variable m_wait;
+    bool m_active = true;
+
+    // Jobs that flush and finalize the written file.
+    size_t m_num_flushes = 0;
+    std::deque<std::function<void(void)>> m_flushes;
+
+    // Temporary copy jobs into the memory mapped file.
+    size_t m_num_copys = 0;
+    std::deque<std::function<void(void)>> m_copy;
+
+    // thread pool executing the jobs.
+    std::deque<std::thread> m_flushers;
+
+    void run();
+
+   public:
+    CacheWriter(int num_threads = 8);
+    ~CacheWriter();
+
+    /**
+     * Capture snapshot of the Hashy and write cache file.
+     * The data may not be entirely flushed before save() returns.
+     */
+    void save(std::string path, Hashy& hashes, uint8_t n);
+
+    /**
+     * Complete all flushes immediately.
+     */
+    void flush();
 };
 
 #endif

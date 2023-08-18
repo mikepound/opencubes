@@ -23,6 +23,52 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
     return cube
 
 
+def fix_axis(cube):
+    """
+    Rotate cube to make boundary sizes in sorted order.
+
+    Ex : if input cube.shape = (4, 1, 2) this method rotate it to be (1, 2, 4)
+
+    Parameters:
+    cube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
+
+    Returns:
+    np.array: Cropped 3D Numpy byte array equivalent to cube, but with no zero padding
+
+    """
+    if cube.shape == tuple(sorted(cube.shape)):
+        return cube
+
+    if cube.shape == tuple(sorted(cube.shape, reverse=True)):
+        return np.rot90(cube, 1, (0, 2))
+
+    if cube.shape[0] == cube.shape[1] or cube.shape[1] == cube.shape[2]:
+        if cube.shape[0] < cube.shape[2]:
+            return cube
+        else:
+            return np.rot90(cube, 1, (0, 2))
+
+    if cube.shape[0] == cube.shape[2]:
+        if cube.shape[0] < cube.shape[1]:
+            return np.rot90(cube, 1, (1, 2))
+        else:
+            return np.rot90(cube, 1, (0, 1))
+
+    if cube.shape[0] < cube.shape[2] < cube.shape[1]:
+        return np.rot90(cube, 1, (1, 2))
+
+    if cube.shape[1] < cube.shape[2] < cube.shape[0]:
+        return np.rot90(np.rot90(cube, 1, (0, 1)), 1, (1, 2))
+
+    if cube.shape[1] < cube.shape[0] < cube.shape[2]:
+        return np.rot90(cube, 1, (0, 1))
+
+    if cube.shape[2] < cube.shape[0] < cube.shape[1]:
+        return np.rot90(np.rot90(cube, 1, (1, 2)), 1, (0, 1))
+
+    print("error", cube.shape)
+    exit(2)
+
 def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
     Expands a polycube by adding single blocks at all valid locations.
@@ -53,4 +99,4 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     for (x, y, z) in zip(exp[0], exp[1], exp[2]):
         new_cube = np.array(cube)
         new_cube[x, y, z] = 1
-        yield crop_cube(new_cube)
+        yield fix_axis(crop_cube(new_cube))

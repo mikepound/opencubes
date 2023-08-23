@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Generator
 
-
 def crop_cube(cube: np.ndarray) -> np.ndarray:
     """
     Crops an np.array to have no all-zero padding around the edge.
@@ -21,7 +20,6 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
         cube = cube[nonzero_indices]
         cube = np.swapaxes(cube, 0, i)
     return cube
-
 
 def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
@@ -49,17 +47,45 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     output_cube[xs, ys-1, zs] = 1
     output_cube[xs, ys, zs+1] = 1
     output_cube[xs, ys, zs-1] = 1
+    output_cube[xs, ys, zs] = 0
 
-    exp = (output_cube ^ cube).nonzero()
-
-    for (x, y, z) in zip(*exp):
+    exp = output_cube.nonzero()
+    bounds=list()
+    bound=np.empty_like(exp[0])
+    for i in range(3):
+        ind = exp[i]==0
+        bound[ind]=0
+        bound[~ind]=1
+        bounds.append(bound.copy())
+        ind=exp[i]==cube.shape[i]-1
+        bound[ind]=cube.shape[i]
+        bound[~ind]=cube.shape[i]-1
+        bounds.append(bound.copy())
+    
+    n=len(exp[0])
+    for i in range(n):
         new_cube = cube.copy()
-        new_cube[x, y, z] = 1
-        xl = 0 if x==0 else 1
-        yl = 0 if y==0 else 1
-        zl = 0 if z==0 else 1
-        xr = cube.shape[0] - (not x==cube.shape[0]-1)
-        yr = cube.shape[1] - (not y==cube.shape[1]-1)
-        zr = cube.shape[2] - (not z==cube.shape[2]-1)
-       
-        yield new_cube[xl:xr,yl:yr,zl:zr]
+        new_cube[exp[0][i], exp[1][i], exp[2][i]] = 1
+        yield new_cube[bounds[0][i]:bounds[1][i],bounds[2][i]:bounds[3][i],bounds[4][i]:bounds[5][i]]
+
+    # vec=np.arange(len(exp[0]))
+    # new_cube = np.tile(cube,(len(vec),1,1,1))
+    # new_cube[vec,exp[0],exp[1],exp[2]]=1
+    # return new_cube
+     
+        
+def test_packing():
+    from time import perf_counter
+    
+    n=1000
+    shape=(4,3,2)
+    polycubes = (np.random.random((n,)+shape)>0.5).astype(np.byte)
+    now=perf_counter()
+    for cube in polycubes:
+        res=list(expand_cube(cube))
+        # res=list(expand_cube_fast(cube))
+        # res=expand_cube(cube)
+    print(perf_counter()-now)
+    
+if __name__ == "__main__":
+    test_packing()

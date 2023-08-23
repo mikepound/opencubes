@@ -45,10 +45,7 @@ def get_canon_shape(polycube):
 
 def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
     orderedShape = get_canon_shape(polycube)
-    if polycube.shape in RotationIndexes:
-        ind = RotationIndexes[polycube.shape]
-        return polycube.ravel()[ind].reshape((len(ind),)+orderedShape)
-    else:
+    if not polycube.shape in RotationIndexes:
         n1,n2,n3 = polycube.shape
         vec = np.arange(n1*n2*n3).reshape(polycube.shape)
         uniqueRotations = set()
@@ -80,6 +77,6 @@ def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None
             func(el)
         for el in single_axis_rotation(np.rot90(vec, -1, axes=(0, 1)), (0, 2)):
             func(el)
-            
         RotationIndexes[polycube.shape] = np.stack(rotations, axis=0)
-        return polycube.ravel()[RotationIndexes[polycube.shape]].reshape((len(rotations),)+orderedShape)
+    ind = RotationIndexes[polycube.shape]
+    return polycube.ravel()[ind].reshape((len(ind),)+orderedShape)

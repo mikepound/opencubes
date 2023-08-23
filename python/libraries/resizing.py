@@ -53,4 +53,11 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     for (x, y, z) in zip(*exp):
         new_cube = cube.copy()
         new_cube[x, y, z] = 1
-        yield crop_cube(new_cube)
+        xl = 0 if x==0 else 1
+        yl = 0 if y==0 else 1
+        zl = 0 if z==0 else 1
+        xr = cube.shape[0] - (not x==cube.shape[0]-1)
+        yr = cube.shape[1] - (not y==cube.shape[1]-1)
+        zr = cube.shape[2] - (not z==cube.shape[2]-1)
+       
+        yield new_cube[xl:xr,yl:yr,zl:zr]

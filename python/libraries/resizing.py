@@ -36,11 +36,20 @@ def fix_axis(cube):
     np.array: Cropped 3D Numpy byte array equivalent to cube, but with no zero padding
 
     """
-    if cube.shape == tuple(sorted(cube.shape)):
+    if cube.shape == tuple(sorted(cube.shape, reverse=True)):
         return cube
 
-    if cube.shape == tuple(sorted(cube.shape, reverse=True)):
+    if cube.shape == tuple(sorted(cube.shape)):
         return np.rot90(cube, 1, (0, 2))
+
+    if cube.shape[0] < cube.shape[2] < cube.shape[1]:
+        return np.rot90(np.rot90(cube, 1, (0, 2)), 1, (1, 2))
+
+    if cube.shape[0] == cube.shape[2]:
+        if cube.shape[0] < cube.shape[1]:
+            return np.rot90(cube, 1, (0, 1))
+        else:
+            return np.rot90(cube, 1, (1, 2))
 
     if cube.shape[0] == cube.shape[1] or cube.shape[1] == cube.shape[2]:
         if cube.shape[0] < cube.shape[2]:
@@ -48,23 +57,14 @@ def fix_axis(cube):
         else:
             return np.rot90(cube, 1, (0, 2))
 
-    if cube.shape[0] == cube.shape[2]:
-        if cube.shape[0] < cube.shape[1]:
-            return np.rot90(cube, 1, (1, 2))
-        else:
-            return np.rot90(cube, 1, (0, 1))
-
-    if cube.shape[0] < cube.shape[2] < cube.shape[1]:
-        return np.rot90(cube, 1, (1, 2))
-
-    if cube.shape[1] < cube.shape[2] < cube.shape[0]:
-        return np.rot90(np.rot90(cube, 1, (0, 1)), 1, (1, 2))
-
-    if cube.shape[1] < cube.shape[0] < cube.shape[2]:
+    if cube.shape[2] < cube.shape[0] < cube.shape[1]:
         return np.rot90(cube, 1, (0, 1))
 
-    if cube.shape[2] < cube.shape[0] < cube.shape[1]:
-        return np.rot90(np.rot90(cube, 1, (1, 2)), 1, (0, 1))
+    if cube.shape[1] < cube.shape[0] < cube.shape[2]:
+        return np.rot90(np.rot90(cube, 1, (0, 1)), 1, (1, 2))
+
+    if cube.shape[1] < cube.shape[2] < cube.shape[0]:
+        return np.rot90(cube, 1, (2, 1))
 
     print("error", cube.shape)
     exit(2)

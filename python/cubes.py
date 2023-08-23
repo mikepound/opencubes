@@ -5,7 +5,7 @@ from libraries.cache import get_cache, save_cache, cache_exists
 from libraries.resizing import expand_cube
 from libraries.packing import pack, unpack
 from libraries.renderer import render_shapes
-from libraries.rotation import all_rotations
+from libraries.rotation import all_rotations, all_rotations_fast
 
 
 def log_if_needed(n, total_n):
@@ -87,7 +87,7 @@ def get_canonical_packing(polycube: np.ndarray,
 
     """
     max_id = b'\x00'
-    for cube_rotation in all_rotations(polycube):
+    for cube_rotation in all_rotations_fast(polycube):
         this_id = pack(cube_rotation)
         if (this_id in known_ids):
             return this_id

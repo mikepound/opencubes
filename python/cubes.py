@@ -7,6 +7,7 @@ from libraries.packing import pack, unpack, packShape, pack_fast
 from libraries.renderer import render_shapes
 from libraries.rotation import all_rotations, all_rotations_fast, get_canon_shape
 import cProfile
+from pstats import Stats, SortKey
 
 def log_if_needed(n, total_n):
     if (n == total_n or n % 100 == 0):
@@ -58,20 +59,10 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
             done += 1
         log_if_needed(done, len(polycubes))
 
-        print(f"\nGenerating polycubes from hash n={n}")
-        results = []
-        done = 0
-        for cube_id in known_ids:
-            results.append(unpack(cube_id))
-            log_if_needed(done, len(known_ids))
-            done += 1
-        log_if_needed(done, len(known_ids))
-
     if (use_cache and not cache_exists(n)):
         save_cache(n, results)
 
     return results
-
 
 def get_canonical_packing(polycube: np.ndarray, 
                           known_ids: set[bytes]) -> bytes:

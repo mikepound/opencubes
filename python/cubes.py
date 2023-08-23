@@ -3,10 +3,10 @@ import argparse
 from time import perf_counter
 from libraries.cache import get_cache, save_cache, cache_exists
 from libraries.resizing import expand_cube
-from libraries.packing import pack, unpack
+from libraries.packing import pack, unpack, packShape, pack_fast
 from libraries.renderer import render_shapes
-from libraries.rotation import all_rotations, all_rotations_fast
-
+from libraries.rotation import all_rotations, all_rotations_fast, get_canon_shape
+import cProfile
 
 def log_if_needed(n, total_n):
     if (n == total_n or n % 100 == 0):
@@ -87,8 +87,10 @@ def get_canonical_packing(polycube: np.ndarray,
 
     """
     max_id = b'\x00'
+    orderedShape = get_canon_shape(polycube)
+    packedShape=packShape(orderedShape)
     for cube_rotation in all_rotations_fast(polycube):
-        this_id = pack(cube_rotation)
+        this_id = pack_fast(cube_rotation,packedShape)
         if (this_id in known_ids):
             return this_id
         if (this_id > max_id):

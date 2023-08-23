@@ -39,8 +39,12 @@ def all_rotations(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
 
 RotationIndexes={}
 
+def get_canon_shape(polycube):
+    return tuple(sorted(polycube.shape,reverse=True))
+
+
 def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
-    orderedShape = tuple(sorted(polycube.shape,reverse=True))
+    orderedShape = get_canon_shape(polycube)
     if polycube.shape in RotationIndexes:
         ind = RotationIndexes[polycube.shape]
         return polycube.ravel()[ind].reshape((len(ind),)+orderedShape)

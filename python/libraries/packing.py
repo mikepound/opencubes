@@ -21,6 +21,14 @@ def pack(polycube: np.ndarray) -> bytes:
             + np.packbits(polycube.flatten(), bitorder='little').tobytes()
     return data
 
+def packShape(shape):
+    data =  shape[0].to_bytes(1, 'little') \
+        + shape[1].to_bytes(1, 'little') \
+        + shape[2].to_bytes(1, 'little')
+    return data
+
+def pack_fast(polycube, packedShape):
+    return packedShape+np.packbits(polycube, bitorder='little').tobytes()
 
 def unpack(cube_id: bytes) -> np.ndarray:
     """

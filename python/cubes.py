@@ -40,18 +40,18 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
         results = get_cache(n)
         print(f"\nGot polycubes from cache n={n}")
     else:
-        pollycubes = generate_polycubes(n-1, use_cache)
+        polycubes = generate_polycubes(n-1, use_cache)
 
         known_ids = set()
         done = 0
         print(f"\nHashing polycubes n={n}")
-        for base_cube in pollycubes:
+        for base_cube in polycubes:
             for new_cube in expand_cube(base_cube):
                 cube_id = get_canonical_packing(new_cube, known_ids)
                 known_ids.add(cube_id)
-            log_if_needed(done, len(pollycubes))
+            log_if_needed(done, len(polycubes))
             done += 1
-        log_if_needed(done, len(pollycubes))
+        log_if_needed(done, len(polycubes))
 
         print(f"\nGenerating polycubes from hash n={n}")
         results = []

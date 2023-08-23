@@ -25,15 +25,15 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
 
 def fix_axis(cube):
     """
-    Rotate cube to make boundary sizes in sorted order.
+    Rotate cube to make boundary sizes in descending order.
 
-    Ex : if input cube.shape = (4, 1, 2) this method rotate it to be (1, 2, 4)
+    Ex : if input cube.shape = (4, 1, 2) this method rotate it to be (4, 2, 1)
 
     Parameters:
     cube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
 
     Returns:
-    np.array: Cropped 3D Numpy byte array equivalent to cube, but with no zero padding
+    np.array: Rotated 3D Numpy byte array equivalent to cube, but with descending size orientation
 
     """
     if cube.shape == tuple(sorted(cube.shape, reverse=True)):

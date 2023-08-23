@@ -44,11 +44,16 @@ def generate_polycubes(n: int, use_cache: bool = False) -> list[np.ndarray]:
 
         known_ids = set()
         done = 0
+        results = list()
         print(f"\nHashing polycubes n={n}")
         for base_cube in polycubes:
             for new_cube in expand_cube(base_cube):
-                cube_id = get_canonical_packing(new_cube, known_ids)
+                cube_id, canon_cube = get_canonical_packing(new_cube, known_ids)
+                prevLength = len(known_ids)
                 known_ids.add(cube_id)
+                afterLength=len(known_ids)
+                if not prevLength == afterLength:
+                    results.append(canon_cube)
             log_if_needed(done, len(polycubes))
             done += 1
         log_if_needed(done, len(polycubes))
@@ -87,15 +92,17 @@ def get_canonical_packing(polycube: np.ndarray,
 
     """
     max_id = b'\x00'
+    curr_cube=polycube
     orderedShape = get_canon_shape(polycube)
     packedShape=packShape(orderedShape)
     for cube_rotation in all_rotations_fast(polycube):
         this_id = pack_fast(cube_rotation,packedShape)
         if (this_id in known_ids):
-            return this_id
+            return this_id, cube_rotation
         if (this_id > max_id):
             max_id = this_id
-    return max_id
+            curr_cube = cube_rotation
+    return max_id, curr_cube
 
 
 if __name__ == "__main__":

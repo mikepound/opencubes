@@ -38,7 +38,7 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
 
     """
     cube = np.pad(cube, 1, 'constant', constant_values=0)
-    output_cube = np.array(cube)
+    output_cube = cube.copy()
 
     xs, ys, zs = cube.nonzero()
     output_cube[xs+1, ys, zs] = 1
@@ -50,7 +50,7 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
 
     exp = (output_cube ^ cube).nonzero()
 
-    for (x, y, z) in zip(exp[0], exp[1], exp[2]):
-        new_cube = np.array(cube)
+    for (x, y, z) in zip(*exp):
+        new_cube = cube.copy()
         new_cube[x, y, z] = 1
         yield crop_cube(new_cube)

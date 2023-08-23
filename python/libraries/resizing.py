@@ -37,8 +37,10 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     generator(np.array): Yields new polycubes that are extensions of cube
 
     """
-    cube = np.pad(cube, 1, 'constant', constant_values=0)
-    output_cube = cube.copy()
+    shape = tuple(el+2 for el in cube.shape)
+    output_cube=np.zeros(shape,dtype=cube.dtype)
+    output_cube[1:-1,1:-1,1:-1]=cube
+    cube=output_cube.copy()
 
     xs, ys, zs = cube.nonzero()
     output_cube[xs+1, ys, zs] = 1

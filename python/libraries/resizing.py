@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Generator
 
-
 def crop_cube(cube: np.ndarray) -> np.ndarray:
     """
     Crops an np.array to have no all-zero padding around the edge.
@@ -22,7 +21,6 @@ def crop_cube(cube: np.ndarray) -> np.ndarray:
         cube = np.swapaxes(cube, 0, i)
     return cube
 
-
 def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
     Expands a polycube by adding single blocks at all valid locations.
@@ -37,8 +35,10 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     generator(np.array): Yields new polycubes that are extensions of cube
 
     """
-    cube = np.pad(cube, 1, 'constant', constant_values=0)
-    output_cube = np.array(cube)
+    shape = tuple(el+2 for el in cube.shape)
+    output_cube=np.zeros(shape,dtype=cube.dtype)
+    output_cube[1:-1,1:-1,1:-1]=cube
+    cube=output_cube.copy()
 
     xs, ys, zs = cube.nonzero()
     output_cube[xs+1, ys, zs] = 1
@@ -47,10 +47,42 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
     output_cube[xs, ys-1, zs] = 1
     output_cube[xs, ys, zs+1] = 1
     output_cube[xs, ys, zs-1] = 1
+    output_cube[xs, ys, zs] = 0
 
-    exp = (output_cube ^ cube).nonzero()
-
-    for (x, y, z) in zip(exp[0], exp[1], exp[2]):
-        new_cube = np.array(cube)
-        new_cube[x, y, z] = 1
-        yield crop_cube(new_cube)
+    exp = output_cube.nonzero()
+    bounds=list()
+    bound=np.empty_like(exp[0])
+    for i in range(3):
+        ind = exp[i]==0
+        bound[ind]=0
+        bound[~ind]=1
+        bounds.append(bound.copy())
+        ind=exp[i]==cube.shape[i]-1
+        bound[ind]=cube.shape[i]
+        bound[~ind]=cube.shape[i]-1
+        bounds.append(bound.copy())
+    
+    n=len(exp[0])
+    for i in range(n):
+        new_cube = cube.copy()
+        new_cube[exp[0][i], exp[1][i], exp[2][i]] = 1
+        yield new_cube[bounds[0][i]:bounds[1][i],bounds[2][i]:bounds[3][i],bounds[4][i]:bounds[5][i]]
+    
+        
+def test_expand():
+    """
+    Function to test the performance of the expand_cube() function
+    """
+    from time import perf_counter
+    
+    n=1000
+    shape=(4,3,2)
+    polycubes = (np.random.random((n,)+shape)>0.5).astype(np.byte)
+    now=perf_counter()
+    for cube in polycubes:
+        res=list(expand_cube(cube))
+        # res=list(expand_cube_fast(cube))
+    print(perf_counter()-now)
+    
+if __name__ == "__main__":
+    test_expand()

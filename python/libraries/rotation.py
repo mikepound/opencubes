@@ -37,13 +37,31 @@ def all_rotations(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
     yield from single_axis_rotation(np.rot90(polycube, axes=(0, 1)), (0, 2))
     yield from single_axis_rotation(np.rot90(polycube, -1, axes=(0, 1)), (0, 2))
 
-RotationIndexes={}
 
 def get_canon_shape(polycube):
+    """
+    Get the canonical shape of the polycube, ordered in descending order
+    """
     return tuple(sorted(polycube.shape,reverse=True))
 
 
+RotationIndexes=set()
 def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
+    """
+    Calculates all rotations of a polycube.
+
+    Adapted from https://stackoverflow.com/questions/33190042/how-to-calculate-all-24-rotations-of-3d-array.
+    This function relies on a global dictionnary that holds the rotations as index permutations.
+    This is faster than using yield because numpy seems to optimize the index computation.
+    It also relies on an canonical shape which reduces the number of possible rotations.
+
+    Parameters:
+    polycube (np.array): 3D Numpy byte array where 1 values indicate polycube positions
+
+    Returns:
+    (np.array): all the rotations of the cube in a 4D array acting as a list of 3D cubes.
+
+    """
     orderedShape = get_canon_shape(polycube)
     if not polycube.shape in RotationIndexes:
         n1,n2,n3 = polycube.shape

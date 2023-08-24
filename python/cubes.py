@@ -3,11 +3,9 @@ import argparse
 from time import perf_counter
 from libraries.cache import get_cache, save_cache, cache_exists
 from libraries.resizing import expand_cube
-from libraries.packing import pack, unpack, packShape, pack_fast
+from libraries.packing import packShape, pack_fast
 from libraries.renderer import render_shapes
-from libraries.rotation import all_rotations, all_rotations_fast, get_canon_shape
-import cProfile
-from pstats import Stats, SortKey
+from libraries.rotation import all_rotations_fast, get_canon_shape
 
 def log_if_needed(n, total_n):
     if (n == total_n or n % 100 == 0):

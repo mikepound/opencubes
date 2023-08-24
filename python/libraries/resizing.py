@@ -67,14 +67,12 @@ def expand_cube(cube: np.ndarray) -> Generator[np.ndarray, None, None]:
         new_cube = cube.copy()
         new_cube[exp[0][i], exp[1][i], exp[2][i]] = 1
         yield new_cube[bounds[0][i]:bounds[1][i],bounds[2][i]:bounds[3][i],bounds[4][i]:bounds[5][i]]
-
-    # vec=np.arange(len(exp[0]))
-    # new_cube = np.tile(cube,(len(vec),1,1,1))
-    # new_cube[vec,exp[0],exp[1],exp[2]]=1
-    # return new_cube
-     
+    
         
-def test_packing():
+def test_expand():
+    """
+    Function to test the performance of the expand_cube() function
+    """
     from time import perf_counter
     
     n=1000
@@ -84,8 +82,7 @@ def test_packing():
     for cube in polycubes:
         res=list(expand_cube(cube))
         # res=list(expand_cube_fast(cube))
-        # res=expand_cube(cube)
     print(perf_counter()-now)
     
 if __name__ == "__main__":
-    test_packing()
+    test_expand()

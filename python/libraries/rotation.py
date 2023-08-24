@@ -1,11 +1,13 @@
 import numpy as np
 from typing import Generator
 
+
 def single_axis_rotation(polycube, axes):
     """Yield four rotations of the given 3d array in the plane spanned by the given axes.
     For example, a rotation in axes (0,1) is a rotation around axis 2"""
     for i in range(4):
         yield np.rot90(polycube, i, axes)
+
 
 def all_rotations(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
@@ -42,10 +44,10 @@ def get_canon_shape(polycube):
     """
     Get the canonical shape of the polycube, ordered in descending order
     """
-    return tuple(sorted(polycube.shape,reverse=True))
+    return tuple(sorted(polycube.shape, reverse=True))
 
 
-RotationIndexes=set()
+RotationIndexes = dict()
 def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None]:
     """
     Calculates all rotations of a polycube.
@@ -64,7 +66,7 @@ def all_rotations_fast(polycube: np.ndarray) -> Generator[np.ndarray, None, None
     """
     orderedShape = get_canon_shape(polycube)
     if not polycube.shape in RotationIndexes:
-        n1,n2,n3 = polycube.shape
+        n1, n2, n3 = polycube.shape
         vec = np.arange(n1*n2*n3).reshape(polycube.shape)
         uniqueRotations = set()
         rotations = list()
